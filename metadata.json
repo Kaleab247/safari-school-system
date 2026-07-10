@@ -1,0 +1,8 @@
+{
+  "name": "Safari School Management System",
+  "description": "A comprehensive school management system with role-based portals, data persistence, and AI assistance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
