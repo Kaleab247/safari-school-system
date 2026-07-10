@@ -1,4 +1,4 @@
-// FinanceModule.tsx - Complete Updated Version
+// FinanceModule.tsx - Complete Fixed Version
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -97,13 +97,11 @@ export default function FinanceModule({
       const saved = localStorage.getItem('safari_fee_structures');
       const allFees = saved ? JSON.parse(saved) : [];
 
-      // If no fee structures exist, create default ones
       if (allFees.length === 0) {
         createDefaultFeeStructures();
         return;
       }
 
-      // Filter by selected school
       let filteredFees = allFees;
       if (selectedSchool) {
         filteredFees = allFees.filter((f: any) => f.schoolId === selectedSchool);
@@ -146,7 +144,6 @@ export default function FinanceModule({
       const saved = localStorage.getItem('safari_pending_payments');
       const allPending = saved ? JSON.parse(saved) : [];
 
-      // Also check admissions with PaymentPending status
       const admissions = JSON.parse(localStorage.getItem('safari_admissions') || '[]');
       const pendingAdmissions = admissions.filter((a: any) =>
         a.hasReceipt && a.status === 'PaymentPending' && !a.approvedByFinance
@@ -158,7 +155,6 @@ export default function FinanceModule({
         allPayments = allPayments.filter((p: any) => p.schoolId === selectedSchool);
       }
 
-      // Remove duplicates
       const uniquePayments = allPayments.filter((p: any, index: number, self: any[]) =>
         index === self.findIndex((t: any) => t.id === p.id)
       );
@@ -170,20 +166,11 @@ export default function FinanceModule({
     }
   };
 
-  // Get schools the finance officer is assigned to
-  const assignedSchools = schools.filter((s: any) => s.status === 'active');
-
-  // Calculate totals
-  const totalIncome = transactions.filter((t: any) => t.type === 'Income').reduce((sum: number, t: any) => sum + t.amount, 0);
-  const totalExpenses = transactions.filter((t: any) => t.type === 'Expense').reduce((sum: number, t: any) => sum + t.amount, 0);
-  const balance = totalIncome - totalExpenses;
-
-  // Get fee structure for a specific grade
+  // Get fee for a specific grade
   const getFeeForGrade = (grade: string) => {
     return feeStructures.find((f: any) => f.grade === grade);
   };
 
-  // Calculate total fee for a grade
   const calculateTotalFee = (data: any) => {
     return (
       (Number(data.tuitionFee) || 0) +
@@ -196,7 +183,8 @@ export default function FinanceModule({
     );
   };
 
-  // Handle viewing receipt
+  // ============ FIXED: Receipt Viewing and Downloading ============
+
   const handleViewReceipt = (payment: any) => {
     setSelectedPayment(payment);
     setSelectedReceiptFile(null);
@@ -204,6 +192,13 @@ export default function FinanceModule({
   };
 
   const handleViewReceiptFile = (file: any) => {
+    // If the file has a dataUrl, use it directly
+    if (file.dataUrl) {
+      setSelectedReceiptFile(file);
+      return;
+    }
+
+    // If the file has a file object, read it
     if (file.file) {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -215,22 +210,67 @@ export default function FinanceModule({
         }
       };
       reader.readAsDataURL(file.file);
-    } else {
-      setSelectedReceiptFile(file);
+      return;
     }
+
+    // If the file is a URL string, open it in a new window
+    if (typeof file === 'string' && file.startsWith('http')) {
+      window.open(file, '_blank');
+      return;
+    }
+
+    // If it's a blob or File object, create a URL
+    if (file instanceof Blob || file instanceof File) {
+      const url = URL.createObjectURL(file);
+      setSelectedReceiptFile({
+        ...file,
+        dataUrl: url
+      });
+      return;
+    }
+
+    // Fallback: just show file info
+    setSelectedReceiptFile(file);
   };
 
   const handleDownloadReceipt = (file: any) => {
-    if (file.file) {
+    // If it's a File object
+    if (file.file instanceof File || file.file instanceof Blob) {
       const url = URL.createObjectURL(file.file);
       const a = document.createElement('a');
       a.href = url;
-      a.download = file.name;
+      a.download = file.name || 'receipt';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      showNotification(`File ${file.name} downloaded successfully!`, 'success');
+      showNotification(`File ${file.name || 'receipt'} downloaded successfully!`, 'success');
+      return;
+    }
+
+    // If it's a File directly
+    if (file instanceof File || file instanceof Blob) {
+      const url = URL.createObjectURL(file);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'receipt';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showNotification('File downloaded successfully!', 'success');
+      return;
+    }
+
+    // If there's a dataUrl
+    if (file.dataUrl) {
+      const a = document.createElement('a');
+      a.href = file.dataUrl;
+      a.download = file.name || 'receipt';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showNotification(`File ${file.name || 'receipt'} downloaded successfully!`, 'success');
       return;
     }
 
@@ -254,7 +294,6 @@ export default function FinanceModule({
       Date: ${receiptData.date}
       File: ${file?.name || 'receipt'}
       File Type: ${file?.type || 'unknown'}
-      File Size: ${file?.size ? (file.size / 1024).toFixed(1) : 'N/A'} KB
 
       ========================================
       This is a generated receipt for reference.
@@ -278,93 +317,8 @@ export default function FinanceModule({
     window.print();
   };
 
-  // Fee Structure Management
-  const handleOpenFeeManager = () => {
-    setModalType('feeManager');
-    setModalData({ grade: '', schoolId: selectedSchool || propSchoolId || '' });
-    setShowModal(true);
-  };
+  // ============ FIXED: Payment Approval with Student Enrollment ============
 
-  const handleEditFee = (fee: FeeStructure) => {
-    setEditingFee(fee);
-    setModalData({
-      ...fee,
-      otherFees: fee.otherFees || []
-    });
-    setModalType('editFee');
-    setShowModal(true);
-  };
-
-  const handleSaveFeeStructure = () => {
-    const allFees = JSON.parse(localStorage.getItem('safari_fee_structures') || '[]');
-
-    const feeData = {
-      id: editingFee?.id || `FEE-${Date.now().toString().slice(-6)}`,
-      grade: modalData.grade,
-      schoolId: selectedSchool || modalData.schoolId || propSchoolId || '',
-      schoolName: selectedSchool ? schools.find((s: any) => s.id === (selectedSchool || modalData.schoolId))?.name || '' : propSchoolName || '',
-      tuitionFee: Number(modalData.tuitionFee) || 0,
-      registrationFee: Number(modalData.registrationFee) || 0,
-      libraryFee: Number(modalData.libraryFee) || 0,
-      sportsFee: Number(modalData.sportsFee) || 0,
-      transportFee: Number(modalData.transportFee) || 0,
-      boardingFee: Number(modalData.boardingFee) || 0,
-      otherFees: modalData.otherFees || [],
-      totalAmount: calculateTotalFee(modalData),
-      updatedAt: new Date().toISOString(),
-      updatedBy: userName
-    };
-
-    let updatedFees;
-    if (editingFee) {
-      updatedFees = allFees.map((f: any) =>
-        f.id === editingFee.id ? feeData : f
-      );
-    } else {
-      // Check if fee structure already exists for this grade and school
-      const existingIndex = allFees.findIndex((f: any) =>
-        f.grade === feeData.grade && f.schoolId === feeData.schoolId
-      );
-      if (existingIndex >= 0) {
-        updatedFees = allFees.map((f: any, i: number) =>
-          i === existingIndex ? feeData : f
-        );
-      } else {
-        updatedFees = [...allFees, feeData];
-      }
-    }
-
-    localStorage.setItem('safari_fee_structures', JSON.stringify(updatedFees));
-    setFeeStructures(updatedFees.filter((f: any) => f.schoolId === selectedSchool || !f.schoolId));
-
-    showNotification(
-      `Fee structure for ${feeData.grade} updated successfully! Total: ${feeData.totalAmount} Birr`,
-      'success'
-    );
-    setShowModal(false);
-    setEditingFee(null);
-    setModalData({});
-  };
-
-  const handleAddOtherFee = () => {
-    const otherFees = modalData.otherFees || [];
-    otherFees.push({ name: '', amount: 0 });
-    setModalData({ ...modalData, otherFees });
-  };
-
-  const handleRemoveOtherFee = (index: number) => {
-    const otherFees = modalData.otherFees || [];
-    otherFees.splice(index, 1);
-    setModalData({ ...modalData, otherFees });
-  };
-
-  const handleUpdateOtherFee = (index: number, field: string, value: any) => {
-    const otherFees = modalData.otherFees || [];
-    otherFees[index] = { ...otherFees[index], [field]: value };
-    setModalData({ ...modalData, otherFees });
-  };
-
-  // Payment Approval
   const handleApprovePayment = (payment: any) => {
     setModalType('approvePayment');
     setModalData({
@@ -376,18 +330,22 @@ export default function FinanceModule({
 
   const handleConfirmApproval = () => {
     const amount = modalData.feeAmount || modalData.amount || 0;
+    const studentName = modalData.candidateName || modalData.studentName || modalData.name;
+    const studentGrade = modalData.gradeApplied || modalData.grade || 'PreKG';
+    const parentName = modalData.parentName || '';
+    const parentEmail = modalData.email || modalData.parentEmail || '';
+    const studentEmail = modalData.email || '';
 
-    // Record transaction
+    // 1. Record the transaction
     if (onAddTransaction) {
       onAddTransaction(
         amount,
         'Income',
         'Tuition',
-        `Tuition payment for ${modalData.candidateName || modalData.studentName || modalData.name} - ${modalData.schoolName || ''}`,
+        `Tuition payment for ${studentName} - ${modalData.schoolName || ''}`,
         'BankTransfer'
       );
     } else {
-      // Save directly to localStorage
       const transactions = JSON.parse(localStorage.getItem('safari_transactions') || '[]');
       transactions.push({
         id: `TXN-${Date.now().toString().slice(-6)}`,
@@ -395,7 +353,7 @@ export default function FinanceModule({
         category: 'Tuition',
         amount: amount,
         date: new Date().toLocaleDateString(),
-        description: `Tuition payment for ${modalData.candidateName || modalData.studentName || modalData.name}`,
+        description: `Tuition payment for ${studentName}`,
         paymentMethod: modalData.paymentMethod || 'BankTransfer',
         status: 'Paid',
         schoolId: selectedSchool || propSchoolId,
@@ -404,12 +362,12 @@ export default function FinanceModule({
       localStorage.setItem('safari_transactions', JSON.stringify(transactions));
     }
 
-    // Remove from pending payments
+    // 2. Remove from pending payments
     const allPending = JSON.parse(localStorage.getItem('safari_pending_payments') || '[]');
     const updatedPending = allPending.filter((p: any) => p.id !== modalData.id);
     localStorage.setItem('safari_pending_payments', JSON.stringify(updatedPending));
 
-    // Update admissions
+    // 3. Update admissions
     const admissions = JSON.parse(localStorage.getItem('safari_admissions') || '[]');
     const updatedAdmissions = admissions.map((a: any) =>
       a.id === modalData.id ? {
@@ -422,10 +380,45 @@ export default function FinanceModule({
     );
     localStorage.setItem('safari_admissions', JSON.stringify(updatedAdmissions));
 
-    // Update pending payments state
+    // 4. FIXED: Create pending student record for Principal
+    const pendingStudent = {
+      id: `PEN-${Date.now().toString().slice(-6)}`,
+      candidateName: studentName,
+      name: studentName,
+      email: studentEmail || parentEmail,
+      parentName: parentName,
+      parentEmail: parentEmail,
+      gradeApplied: studentGrade,
+      grade: studentGrade,
+      phone: modalData.phone || '',
+      schoolId: selectedSchool || propSchoolId || modalData.schoolId,
+      schoolName: modalData.schoolName || propSchoolName || '',
+      feePaid: amount,
+      feePaidDate: new Date().toISOString(),
+      status: 'Pending',
+      approvedBy: userName,
+      approvedDate: new Date().toISOString(),
+      receiptFiles: modalData.receiptFiles || [],
+      hasReceipt: true,
+      submittedDate: modalData.submittedDate || new Date().toLocaleDateString()
+    };
+
+    // Save to pending students
+    const existingPending = JSON.parse(localStorage.getItem('safari_pending_students') || '[]');
+    // Check if already exists to avoid duplicates
+    const exists = existingPending.some((s: any) => s.candidateName === studentName && s.schoolId === pendingStudent.schoolId);
+    if (!exists) {
+      existingPending.push(pendingStudent);
+      localStorage.setItem('safari_pending_students', JSON.stringify(existingPending));
+    }
+
+    // 5. Update pending payments state
     setPendingPayments(updatedPending.filter((p: any) => p.schoolId === selectedSchool));
 
-    showNotification(`✅ Payment of ${amount} Birr approved for ${modalData.candidateName || modalData.studentName || modalData.name}!`, 'success');
+    showNotification(
+      `✅ Payment of ${amount} Birr approved for ${studentName}! Student has been sent to Principal for enrollment.`,
+      'success'
+    );
     setShowModal(false);
   };
 
@@ -495,6 +488,97 @@ export default function FinanceModule({
     }, 500);
   };
 
+  // Fee Structure Management
+  const handleOpenFeeManager = () => {
+    setModalType('feeManager');
+    setModalData({ grade: '', schoolId: selectedSchool || propSchoolId || '' });
+    setShowModal(true);
+  };
+
+  const handleEditFee = (fee: FeeStructure) => {
+    setEditingFee(fee);
+    setModalData({
+      ...fee,
+      otherFees: fee.otherFees || []
+    });
+    setModalType('editFee');
+    setShowModal(true);
+  };
+
+  const handleSaveFeeStructure = () => {
+    const allFees = JSON.parse(localStorage.getItem('safari_fee_structures') || '[]');
+
+    const feeData = {
+      id: editingFee?.id || `FEE-${Date.now().toString().slice(-6)}`,
+      grade: modalData.grade,
+      schoolId: selectedSchool || modalData.schoolId || propSchoolId || '',
+      schoolName: selectedSchool ? schools.find((s: any) => s.id === (selectedSchool || modalData.schoolId))?.name || '' : propSchoolName || '',
+      tuitionFee: Number(modalData.tuitionFee) || 0,
+      registrationFee: Number(modalData.registrationFee) || 0,
+      libraryFee: Number(modalData.libraryFee) || 0,
+      sportsFee: Number(modalData.sportsFee) || 0,
+      transportFee: Number(modalData.transportFee) || 0,
+      boardingFee: Number(modalData.boardingFee) || 0,
+      otherFees: modalData.otherFees || [],
+      totalAmount: calculateTotalFee(modalData),
+      updatedAt: new Date().toISOString(),
+      updatedBy: userName
+    };
+
+    let updatedFees;
+    if (editingFee) {
+      updatedFees = allFees.map((f: any) =>
+        f.id === editingFee.id ? feeData : f
+      );
+    } else {
+      const existingIndex = allFees.findIndex((f: any) =>
+        f.grade === feeData.grade && f.schoolId === feeData.schoolId
+      );
+      if (existingIndex >= 0) {
+        updatedFees = allFees.map((f: any, i: number) =>
+          i === existingIndex ? feeData : f
+        );
+      } else {
+        updatedFees = [...allFees, feeData];
+      }
+    }
+
+    localStorage.setItem('safari_fee_structures', JSON.stringify(updatedFees));
+    setFeeStructures(updatedFees.filter((f: any) => f.schoolId === selectedSchool || !f.schoolId));
+
+    showNotification(
+      `Fee structure for ${feeData.grade} updated successfully! Total: ${feeData.totalAmount} Birr`,
+      'success'
+    );
+    setShowModal(false);
+    setEditingFee(null);
+    setModalData({});
+  };
+
+  const handleAddOtherFee = () => {
+    const otherFees = modalData.otherFees || [];
+    otherFees.push({ name: '', amount: 0 });
+    setModalData({ ...modalData, otherFees });
+  };
+
+  const handleRemoveOtherFee = (index: number) => {
+    const otherFees = modalData.otherFees || [];
+    otherFees.splice(index, 1);
+    setModalData({ ...modalData, otherFees });
+  };
+
+  const handleUpdateOtherFee = (index: number, field: string, value: any) => {
+    const otherFees = modalData.otherFees || [];
+    otherFees[index] = { ...otherFees[index], [field]: value };
+    setModalData({ ...modalData, otherFees });
+  };
+
+  const assignedSchools = schools.filter((s: any) => s.status === 'active');
+
+  const totalIncome = transactions.filter((t: any) => t.type === 'Income').reduce((sum: number, t: any) => sum + t.amount, 0);
+  const totalExpenses = transactions.filter((t: any) => t.type === 'Expense').reduce((sum: number, t: any) => sum + t.amount, 0);
+  const balance = totalIncome - totalExpenses;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -548,7 +632,7 @@ export default function FinanceModule({
         </div>
       </div>
 
-      {/* School Selector - Only show if multiple schools */}
+      {/* School Selector */}
       {assignedSchools.length > 1 && (
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
           <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
@@ -966,7 +1050,7 @@ export default function FinanceModule({
         </div>
       )}
 
-      {/* RECEIPT VIEW MODAL */}
+      {/* RECEIPT VIEW MODAL - FIXED */}
       {showReceiptModal && selectedPayment && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className={`bg-white rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto transition-all ${
@@ -1196,14 +1280,14 @@ export default function FinanceModule({
         </div>
       )}
 
-      {/* FILE PREVIEW MODAL */}
+      {/* FILE PREVIEW MODAL - FIXED */}
       {selectedReceiptFile && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden">
             <div className="flex justify-between items-center p-4 border-b border-slate-200">
               <h4 className="font-semibold text-slate-900 flex items-center gap-2">
                 <Eye className="h-4 w-4 text-indigo-600" />
-                File Preview: {selectedReceiptFile.name}
+                File Preview: {selectedReceiptFile.name || 'Receipt'}
               </h4>
               <div className="flex items-center gap-2">
                 <button
@@ -1227,7 +1311,7 @@ export default function FinanceModule({
                   {selectedReceiptFile.dataUrl ? (
                     <img
                       src={selectedReceiptFile.dataUrl}
-                      alt={selectedReceiptFile.name}
+                      alt={selectedReceiptFile.name || 'Receipt'}
                       className="max-w-full max-h-[500px] object-contain rounded-lg"
                       onError={() => {
                         setSelectedReceiptFile({ ...selectedReceiptFile, dataUrl: null });
@@ -1259,7 +1343,7 @@ export default function FinanceModule({
                       <Image className="h-20 w-20 text-slate-400 mx-auto mb-4" />
                       <p className="text-slate-500 mb-2">Image Preview</p>
                       <p className="text-sm text-slate-400">
-                        {selectedReceiptFile.name} ({(selectedReceiptFile.size / 1024).toFixed(1)} KB)
+                        {selectedReceiptFile.name || 'Receipt'} ({(selectedReceiptFile.size / 1024).toFixed(1)} KB)
                       </p>
                       <button
                         onClick={() => handleDownloadReceipt(selectedReceiptFile)}
@@ -1276,11 +1360,11 @@ export default function FinanceModule({
                     <FileText className="h-20 w-20 text-red-400 mx-auto mb-4" />
                     <p className="text-slate-500 mb-2">PDF Document</p>
                     <p className="text-sm text-slate-400">
-                      {selectedReceiptFile.name} ({(selectedReceiptFile.size / 1024).toFixed(1)} KB)
+                      {selectedReceiptFile.name || 'Receipt'} ({(selectedReceiptFile.size / 1024).toFixed(1)} KB)
                     </p>
                     <div className="mt-4 p-4 bg-white rounded-lg border border-slate-200">
                       <p className="text-xs text-slate-500">
-                        📄 PDF Document: {selectedReceiptFile.name}
+                        📄 PDF Document: {selectedReceiptFile.name || 'Receipt'}
                       </p>
                       <p className="text-xs text-slate-400 mt-1">
                         Click Download to view the PDF
@@ -1300,11 +1384,11 @@ export default function FinanceModule({
                     <File className="h-20 w-20 text-blue-400 mx-auto mb-4" />
                     <p className="text-slate-500 mb-2">File Preview</p>
                     <p className="text-sm text-slate-400">
-                      {selectedReceiptFile.name} ({(selectedReceiptFile.size / 1024).toFixed(1)} KB)
+                      {selectedReceiptFile.name || 'Receipt'} ({(selectedReceiptFile.size / 1024).toFixed(1)} KB)
                     </p>
                     <div className="mt-4 p-4 bg-white rounded-lg border border-slate-200 max-w-md mx-auto">
                       <p className="text-xs text-slate-500 break-all">
-                        File: {selectedReceiptFile.name}
+                        File: {selectedReceiptFile.name || 'Receipt'}
                       </p>
                       <p className="text-xs text-slate-400 mt-1">
                         Type: {selectedReceiptFile.type || 'Unknown'}
@@ -1319,6 +1403,84 @@ export default function FinanceModule({
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* APPROVE PAYMENT MODAL */}
+      {showModal && modalType === 'approvePayment' && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">Approve Payment</h3>
+              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div className="bg-slate-50 p-4 rounded-xl space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Student:</span>
+                  <span className="font-medium">{modalData.candidateName || modalData.studentName || modalData.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">School:</span>
+                  <span className="font-medium">{modalData.schoolName || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Grade:</span>
+                  <span className="font-medium">{modalData.gradeApplied || modalData.grade || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Amount:</span>
+                  <span className="font-bold text-emerald-600">{modalData.feeAmount || modalData.amount || 0} Birr</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Payment Method:</span>
+                  <span className="font-medium text-sm">{modalData.paymentMethod || 'BankTransfer'}</span>
+                </div>
+                {modalData.receiptFiles && modalData.receiptFiles.length > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Receipts:</span>
+                    <span className="font-medium text-indigo-600">{modalData.receiptFiles.length} file(s)</span>
+                  </div>
+                )}
+                {modalData.receiptFile && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Receipt:</span>
+                    <span className="font-medium text-indigo-600">1 file</span>
+                  </div>
+                )}
+                {modalData.notes && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Notes:</span>
+                    <span className="font-medium text-sm">{modalData.notes}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
+                <p className="text-sm text-yellow-700 flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>Approving this payment will record the transaction and send the student to the principal for enrollment.</span>
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleConfirmApproval}
+                  className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-semibold hover:bg-emerald-700 transition-colors cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <CheckCircle className="h-4 w-4" /> Approve
+                </button>
+                <button
+                  onClick={() => setShowModal(false)}
+                  className="flex-1 bg-slate-200 text-slate-700 py-3 rounded-xl font-semibold hover:bg-slate-300 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1505,84 +1667,6 @@ export default function FinanceModule({
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* APPROVE PAYMENT MODAL */}
-      {showModal && modalType === 'approvePayment' && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold">Approve Payment</h3>
-              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div className="bg-slate-50 p-4 rounded-xl space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Student:</span>
-                  <span className="font-medium">{modalData.candidateName || modalData.studentName || modalData.name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">School:</span>
-                  <span className="font-medium">{modalData.schoolName || 'N/A'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Grade:</span>
-                  <span className="font-medium">{modalData.gradeApplied || modalData.grade || 'N/A'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Amount:</span>
-                  <span className="font-bold text-emerald-600">{modalData.feeAmount || modalData.amount || 0} Birr</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Payment Method:</span>
-                  <span className="font-medium text-sm">{modalData.paymentMethod || 'BankTransfer'}</span>
-                </div>
-                {modalData.receiptFiles && modalData.receiptFiles.length > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Receipts:</span>
-                    <span className="font-medium text-indigo-600">{modalData.receiptFiles.length} file(s)</span>
-                  </div>
-                )}
-                {modalData.receiptFile && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Receipt:</span>
-                    <span className="font-medium text-indigo-600">1 file</span>
-                  </div>
-                )}
-                {modalData.notes && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Notes:</span>
-                    <span className="font-medium text-sm">{modalData.notes}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
-                <p className="text-sm text-yellow-700 flex items-start gap-2">
-                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                  <span>Approving this payment will record the transaction and send the student to the principal for enrollment.</span>
-                </p>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={handleConfirmApproval}
-                  className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-semibold hover:bg-emerald-700 transition-colors cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <CheckCircle className="h-4 w-4" /> Approve
-                </button>
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 bg-slate-200 text-slate-700 py-3 rounded-xl font-semibold hover:bg-slate-300 transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       )}
