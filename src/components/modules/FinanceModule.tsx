@@ -198,8 +198,8 @@ export default function FinanceModule({
       return;
     }
 
-    // If the file has a file object, read it
-    if (file.file) {
+    // FIXED: Defensive check to ensure we only try to read actual Blob/File objects
+    if (file.file instanceof Blob || file.file instanceof File) {
       const reader = new FileReader();
       reader.onload = (e) => {
         if (e.target?.result) {
@@ -219,7 +219,7 @@ export default function FinanceModule({
       return;
     }
 
-    // If it's a blob or File object, create a URL
+    // If it's a blob or File object directly, create a URL
     if (file instanceof Blob || file instanceof File) {
       const url = URL.createObjectURL(file);
       setSelectedReceiptFile({
@@ -234,7 +234,7 @@ export default function FinanceModule({
   };
 
   const handleDownloadReceipt = (file: any) => {
-    // If it's a File object
+    // If it's a File object wrapper
     if (file.file instanceof File || file.file instanceof Blob) {
       const url = URL.createObjectURL(file.file);
       const a = document.createElement('a');
@@ -1155,7 +1155,7 @@ export default function FinanceModule({
                             {isImage && hasPreview && (
                               <button
                                 onClick={() => {
-                                  if (file.file) {
+                                  if (file.file instanceof Blob || file.file instanceof File) {
                                     const reader = new FileReader();
                                     reader.onload = (e) => {
                                       if (e.target?.result) {
@@ -1204,7 +1204,7 @@ export default function FinanceModule({
                         {selectedPayment.receiptFile.type?.startsWith('image/') && (
                           <button
                             onClick={() => {
-                              if (selectedPayment.receiptFile.file) {
+                              if (selectedPayment.receiptFile.file instanceof Blob || selectedPayment.receiptFile.file instanceof File) {
                                 const reader = new FileReader();
                                 reader.onload = (e) => {
                                   if (e.target?.result) {
@@ -1317,7 +1317,7 @@ export default function FinanceModule({
                         setSelectedReceiptFile({ ...selectedReceiptFile, dataUrl: null });
                       }}
                     />
-                  ) : selectedReceiptFile.file ? (
+                  ) : (selectedReceiptFile.file instanceof Blob || selectedReceiptFile.file instanceof File) ? (
                     (() => {
                       const reader = new FileReader();
                       reader.onload = (e) => {
