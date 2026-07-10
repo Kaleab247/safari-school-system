@@ -191,15 +191,26 @@ export default function FinanceModule({
     setShowReceiptModal(true);
   };
 
+  // FIXED: View Receipt File function without instanceof
   const handleViewReceiptFile = (file: any) => {
     // If the file has a dataUrl, use it directly
-    if (file.dataUrl) {
+    if (file && file.dataUrl) {
       setSelectedReceiptFile(file);
       return;
     }
 
-    // FIXED: Defensive check to ensure we only try to read actual Blob/File objects
-    if (file.file instanceof Blob || file.file instanceof File) {
+    // Helper to check if something is a Blob or File without instanceof
+    const isBlobLike = (obj: any): boolean => {
+      return obj &&
+             typeof obj === 'object' &&
+             obj.constructor &&
+             (obj.constructor.name === 'Blob' || obj.constructor.name === 'File') &&
+             typeof obj.size === 'number' &&
+             typeof obj.type === 'string';
+    };
+
+    // Check if file has a file property that's Blob-like
+    if (file && file.file && isBlobLike(file.file)) {
       const reader = new FileReader();
       reader.onload = (e) => {
         if (e.target?.result) {
@@ -213,19 +224,30 @@ export default function FinanceModule({
       return;
     }
 
+    // Check if file is directly Blob-like
+    if (isBlobLike(file)) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (e.target?.result) {
+          setSelectedReceiptFile({
+            ...file,
+            dataUrl: e.target.result as string
+          });
+        }
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
+
     // If the file is a URL string, open it in a new window
     if (typeof file === 'string' && file.startsWith('http')) {
       window.open(file, '_blank');
       return;
     }
 
-    // If it's a blob or File object directly, create a URL
-    if (file instanceof Blob || file instanceof File) {
-      const url = URL.createObjectURL(file);
-      setSelectedReceiptFile({
-        ...file,
-        dataUrl: url
-      });
+    // If file has a url property
+    if (file && file.url) {
+      window.open(file.url, '_blank');
       return;
     }
 
@@ -233,54 +255,91 @@ export default function FinanceModule({
     setSelectedReceiptFile(file);
   };
 
+  // FIXED: Download Receipt function without instanceof
   const handleDownloadReceipt = (file: any) => {
-    // If it's a File object wrapper
-    if (file.file instanceof File || file.file instanceof Blob) {
-      const url = URL.createObjectURL(file.file);
+    console.log('Downloading file:', file);
+
+    const triggerDownload = (blob: Blob, filename: string) => {
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = file.name || 'receipt';
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      showNotification(`File ${file.name || 'receipt'} downloaded successfully!`, 'success');
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showNotification(`File "${filename}" downloaded successfully!`, 'success');
+    };
+
+    // Helper to check if something is a Blob or File without instanceof
+    const isBlobLike = (obj: any): obj is Blob => {
+      return obj &&
+             typeof obj === 'object' &&
+             obj.constructor &&
+             (obj.constructor.name === 'Blob' || obj.constructor.name === 'File') &&
+             typeof obj.size === 'number' &&
+             typeof obj.type === 'string';
+    };
+
+    // Case 1: If file has a file property
+    if (file && file.file) {
+      if (isBlobLike(file.file)) {
+        triggerDownload(file.file, file.name || 'receipt');
+        return;
+      }
+      if (typeof file.file === 'string') {
+        if (file.file.startsWith('data:')) {
+          fetch(file.file)
+            .then(res => res.blob())
+            .then(blob => triggerDownload(blob, file.name || 'receipt'))
+            .catch(() => showNotification('Error downloading file', 'error'));
+          return;
+        }
+        window.open(file.file, '_blank');
+        return;
+      }
+    }
+
+    // Case 2: Direct Blob-like object
+    if (isBlobLike(file)) {
+      triggerDownload(file, file.name || 'receipt');
       return;
     }
 
-    // If it's a File directly
-    if (file instanceof File || file instanceof Blob) {
-      const url = URL.createObjectURL(file);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'receipt';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      showNotification('File downloaded successfully!', 'success');
+    // Case 3: dataUrl property
+    if (file && file.dataUrl) {
+      fetch(file.dataUrl)
+        .then(res => res.blob())
+        .then(blob => triggerDownload(blob, file.name || 'receipt'))
+        .catch(() => showNotification('Error downloading file', 'error'));
       return;
     }
 
-    // If there's a dataUrl
-    if (file.dataUrl) {
-      const a = document.createElement('a');
-      a.href = file.dataUrl;
-      a.download = file.name || 'receipt';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      showNotification(`File ${file.name || 'receipt'} downloaded successfully!`, 'success');
+    // Case 4: URL string
+    if (typeof file === 'string') {
+      if (file.startsWith('data:')) {
+        fetch(file)
+          .then(res => res.blob())
+          .then(blob => triggerDownload(blob, 'receipt'))
+          .catch(() => window.open(file, '_blank'));
+      } else {
+        window.open(file, '_blank');
+      }
       return;
     }
 
-    // Fallback: generate a text receipt
+    // Case 5: url or fileUrl property
+    if (file && (file.url || file.fileUrl)) {
+      window.open(file.url || file.fileUrl, '_blank');
+      return;
+    }
+
+    // Case 6: Fallback - generate a text receipt
     const receiptData = {
       studentName: selectedPayment?.candidateName || selectedPayment?.studentName || selectedPayment?.name || 'Student',
       schoolName: selectedPayment?.schoolName || 'School',
       amount: selectedPayment?.feeAmount || selectedPayment?.amount || 0,
       date: selectedPayment?.submittedDate || new Date().toLocaleDateString(),
-      file: file
     };
 
     const content = `
@@ -292,32 +351,21 @@ export default function FinanceModule({
       School: ${receiptData.schoolName}
       Amount: ${receiptData.amount} Birr
       Date: ${receiptData.date}
-      File: ${file?.name || 'receipt'}
-      File Type: ${file?.type || 'unknown'}
 
       ========================================
-      This is a generated receipt for reference.
+      Generated receipt for reference.
       ========================================
     `;
 
     const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `receipt_${receiptData.studentName.replace(/\s+/g, '_')}_${Date.now()}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    showNotification(`Receipt for ${receiptData.studentName} downloaded successfully!`, 'success');
+    triggerDownload(blob, `receipt_${receiptData.studentName.replace(/\s+/g, '_')}_${Date.now()}.txt`);
   };
 
   const handlePrintReceipt = () => {
     window.print();
   };
 
-  // ============ FIXED: Payment Approval with Student Enrollment ============
+  // ============ Payment Approval with Student Enrollment ============
 
   const handleApprovePayment = (payment: any) => {
     setModalType('approvePayment');
@@ -380,7 +428,7 @@ export default function FinanceModule({
     );
     localStorage.setItem('safari_admissions', JSON.stringify(updatedAdmissions));
 
-    // 4. FIXED: Create pending student record for Principal
+    // 4. Create pending student record for Principal
     const pendingStudent = {
       id: `PEN-${Date.now().toString().slice(-6)}`,
       candidateName: studentName,
@@ -719,8 +767,7 @@ export default function FinanceModule({
           <button
             key={tab}
             onClick={() => setActiveTab(tab.toLowerCase().replace(' ', '_'))}
-            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors cursor-pointer ${
-              activeTab === tab.toLowerCase().replace(' ', '_')
+            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors cursor-pointer ${activeTab === tab.toLowerCase().replace(' ', '_')
                 ? 'bg-emerald-600 text-white'
                 : 'text-slate-500 hover:bg-slate-100'
             }`}
@@ -950,15 +997,11 @@ export default function FinanceModule({
                       <td className="px-4 py-2 text-slate-500">{tx.date}</td>
                       <td className="px-4 py-2 font-medium">{tx.description}</td>
                       <td className="px-4 py-2">{tx.schoolName || 'N/A'}</td>
-                      <td className={`px-4 py-2 text-right font-bold ${
-                        tx.type === 'Income' ? 'text-emerald-600' : 'text-red-600'
-                      }`}>
+                      <td className={`px-4 py-2 text-right font-bold ${tx.type === 'Income' ? 'text-emerald-600' : 'text-red-600'}`}>
                         {tx.type === 'Income' ? '+' : '-'}{tx.amount.toLocaleString()} Birr
                       </td>
                       <td className="px-4 py-2">
-                        <span className={`px-2 py-0.5 rounded-full text-xs ${
-                          tx.type === 'Income' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
-                        }`}>
+                        <span className={`px-2 py-0.5 rounded-full text-xs ${tx.type === 'Income' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                           {tx.type}
                         </span>
                       </td>
@@ -1050,12 +1093,10 @@ export default function FinanceModule({
         </div>
       )}
 
-      {/* RECEIPT VIEW MODAL - FIXED */}
+      {/* RECEIPT VIEW MODAL */}
       {showReceiptModal && selectedPayment && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className={`bg-white rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto transition-all ${
-            isFullscreen ? 'max-w-7xl' : 'max-w-4xl'
-          }`}>
+          <div className={`bg-white rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto transition-all ${isFullscreen ? 'max-w-7xl' : 'max-w-4xl'}`}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold flex items-center gap-2">
                 <Receipt className="h-5 w-5 text-indigo-600" />
@@ -1154,22 +1195,7 @@ export default function FinanceModule({
                           <div className="flex items-center gap-2 flex-shrink-0">
                             {isImage && hasPreview && (
                               <button
-                                onClick={() => {
-                                  if (file.file instanceof Blob || file.file instanceof File) {
-                                    const reader = new FileReader();
-                                    reader.onload = (e) => {
-                                      if (e.target?.result) {
-                                        setSelectedReceiptFile({
-                                          ...file,
-                                          dataUrl: e.target.result as string
-                                        });
-                                      }
-                                    };
-                                    reader.readAsDataURL(file.file);
-                                  } else {
-                                    setSelectedReceiptFile(file);
-                                  }
-                                }}
+                                onClick={() => handleViewReceiptFile(file)}
                                 className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-colors flex items-center gap-1 cursor-pointer"
                               >
                                 <Eye className="h-3.5 w-3.5" /> View
@@ -1203,22 +1229,7 @@ export default function FinanceModule({
                       <div className="flex items-center gap-2 flex-shrink-0">
                         {selectedPayment.receiptFile.type?.startsWith('image/') && (
                           <button
-                            onClick={() => {
-                              if (selectedPayment.receiptFile.file instanceof Blob || selectedPayment.receiptFile.file instanceof File) {
-                                const reader = new FileReader();
-                                reader.onload = (e) => {
-                                  if (e.target?.result) {
-                                    setSelectedReceiptFile({
-                                      ...selectedPayment.receiptFile,
-                                      dataUrl: e.target.result as string
-                                    });
-                                  }
-                                };
-                                reader.readAsDataURL(selectedPayment.receiptFile.file);
-                              } else {
-                                setSelectedReceiptFile(selectedPayment.receiptFile);
-                              }
-                            }}
+                            onClick={() => handleViewReceiptFile(selectedPayment.receiptFile)}
                             className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-colors flex items-center gap-1 cursor-pointer"
                           >
                             <Eye className="h-3.5 w-3.5" /> View
@@ -1280,7 +1291,7 @@ export default function FinanceModule({
         </div>
       )}
 
-      {/* FILE PREVIEW MODAL - FIXED */}
+      {/* FILE PREVIEW MODAL */}
       {selectedReceiptFile && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden">
@@ -1317,27 +1328,6 @@ export default function FinanceModule({
                         setSelectedReceiptFile({ ...selectedReceiptFile, dataUrl: null });
                       }}
                     />
-                  ) : (selectedReceiptFile.file instanceof Blob || selectedReceiptFile.file instanceof File) ? (
-                    (() => {
-                      const reader = new FileReader();
-                      reader.onload = (e) => {
-                        if (e.target?.result) {
-                          setSelectedReceiptFile({
-                            ...selectedReceiptFile,
-                            dataUrl: e.target.result as string
-                          });
-                        }
-                      };
-                      reader.readAsDataURL(selectedReceiptFile.file);
-                      return (
-                        <div className="text-center">
-                          <div className="animate-pulse">
-                            <Image className="h-20 w-20 text-indigo-400 mx-auto mb-4" />
-                            <p className="text-slate-500">Loading image...</p>
-                          </div>
-                        </div>
-                      );
-                    })()
                   ) : (
                     <div className="text-center">
                       <Image className="h-20 w-20 text-slate-400 mx-auto mb-4" />
