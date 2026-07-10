@@ -1,4 +1,4 @@
-// FinanceModule.tsx - Complete Fixed Version
+// src/components/modules/FinanceModule.tsx - Complete Fixed Version
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -183,6 +183,18 @@ export default function FinanceModule({
     );
   };
 
+  // ============ HELPER: Check if something is a Blob or File (NO instanceof) ============
+  const isBlobLike = (obj: any): boolean => {
+    if (!obj || typeof obj !== 'object') return false;
+    // Check if it has Blob/File properties
+    return (
+      typeof obj.size === 'number' &&
+      typeof obj.type === 'string' &&
+      obj.constructor &&
+      (obj.constructor.name === 'Blob' || obj.constructor.name === 'File')
+    );
+  };
+
   // ============ FIXED: Receipt Viewing and Downloading ============
 
   const handleViewReceipt = (payment: any) => {
@@ -191,23 +203,13 @@ export default function FinanceModule({
     setShowReceiptModal(true);
   };
 
-  // FIXED: View Receipt File function without instanceof
+  // FIXED: View Receipt File function (NO instanceof)
   const handleViewReceiptFile = (file: any) => {
     // If the file has a dataUrl, use it directly
     if (file && file.dataUrl) {
       setSelectedReceiptFile(file);
       return;
     }
-
-    // Helper to check if something is a Blob or File without instanceof
-    const isBlobLike = (obj: any): boolean => {
-      return obj &&
-             typeof obj === 'object' &&
-             obj.constructor &&
-             (obj.constructor.name === 'Blob' || obj.constructor.name === 'File') &&
-             typeof obj.size === 'number' &&
-             typeof obj.type === 'string';
-    };
 
     // Check if file has a file property that's Blob-like
     if (file && file.file && isBlobLike(file.file)) {
@@ -255,7 +257,7 @@ export default function FinanceModule({
     setSelectedReceiptFile(file);
   };
 
-  // FIXED: Download Receipt function without instanceof
+  // FIXED: Download Receipt function (NO instanceof)
   const handleDownloadReceipt = (file: any) => {
     console.log('Downloading file:', file);
 
@@ -269,16 +271,6 @@ export default function FinanceModule({
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       showNotification(`File "${filename}" downloaded successfully!`, 'success');
-    };
-
-    // Helper to check if something is a Blob or File without instanceof
-    const isBlobLike = (obj: any): obj is Blob => {
-      return obj &&
-             typeof obj === 'object' &&
-             obj.constructor &&
-             (obj.constructor.name === 'Blob' || obj.constructor.name === 'File') &&
-             typeof obj.size === 'number' &&
-             typeof obj.type === 'string';
     };
 
     // Case 1: If file has a file property
