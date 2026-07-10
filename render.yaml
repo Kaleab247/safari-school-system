@@ -3,7 +3,7 @@ services:
     name: safari-school-system
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build
+    buildCommand: npm install && chmod +x node_modules/.bin/vite && npm run build
     startCommand: npm start
     envVars:
       - key: NODE_VERSION
