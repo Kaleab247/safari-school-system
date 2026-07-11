@@ -1,4 +1,4 @@
-// PrincipalModule.tsx - Complete Updated Version
+// PrincipalModule.tsx - Complete Updated Version with Fixed Enrollment
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -1111,7 +1111,8 @@ export default function PrincipalModule({
     }
   };
 
-  // ============ ENROLL STUDENT HANDLERS ============
+  // ============ FIXED: ENROLL STUDENT HANDLERS ============
+
   const handleEnrollStudent = (pendingStudent: any) => {
     setModalType('enrollStudent');
     setModalData({
@@ -1139,6 +1140,7 @@ export default function PrincipalModule({
       return;
     }
 
+    // Create the student
     const newStudent = {
       id: `STU-${Date.now().toString().slice(-6)}`,
       admissionNo: `ADM${Date.now().toString().slice(-6)}`,
@@ -1168,12 +1170,15 @@ export default function PrincipalModule({
       setStudents((prev: any[]) => [...prev, newStudent]);
     }
 
+    // FIXED: Generate passwords
     const studentPassword = `STU${newStudent.id.slice(-6)}`;
     const parentPassword = `PAR${newStudent.id.slice(-6)}`;
 
     const createdUsers = [];
 
+    // Create STUDENT user account - FIXED: properly save with password
     if (newStudent.email && setRegisteredUsers) {
+      // Check if student user already exists
       const studentExists = registeredUsers.some(
         (u: any) => u.email.toLowerCase() === newStudent.email.toLowerCase()
       );
@@ -1194,9 +1199,26 @@ export default function PrincipalModule({
 
         setRegisteredUsers((prev: any[]) => [...prev, studentUser]);
         createdUsers.push({ type: 'Student', ...studentUser });
+      } else {
+        // Update existing student user with correct password
+        setRegisteredUsers((prev: any[]) =>
+          prev.map((u: any) =>
+            u.email.toLowerCase() === newStudent.email.toLowerCase()
+              ? { ...u, password: studentPassword, associatedId: newStudent.id }
+              : u
+          )
+        );
+        createdUsers.push({
+          type: 'Student',
+          name: newStudent.name,
+          email: newStudent.email,
+          password: studentPassword,
+          updated: true
+        });
       }
     }
 
+    // Create PARENT user account - FIXED: properly save with password
     if (newStudent.parentEmail && setRegisteredUsers) {
       const parentExists = registeredUsers.some(
         (u: any) => u.email.toLowerCase() === newStudent.parentEmail.toLowerCase()
@@ -1218,40 +1240,76 @@ export default function PrincipalModule({
 
         setRegisteredUsers((prev: any[]) => [...prev, parentUser]);
         createdUsers.push({ type: 'Parent', ...parentUser });
+      } else {
+        // Update existing parent user with correct password
+        setRegisteredUsers((prev: any[]) =>
+          prev.map((u: any) =>
+            u.email.toLowerCase() === newStudent.parentEmail.toLowerCase()
+              ? { ...u, password: parentPassword, associatedId: newStudent.id }
+              : u
+          )
+        );
+        createdUsers.push({
+          type: 'Parent',
+          name: newStudent.parentName,
+          email: newStudent.parentEmail,
+          password: parentPassword,
+          updated: true
+        });
       }
     }
 
+    // Remove from pending students
     const allPending = JSON.parse(localStorage.getItem('safari_pending_students') || '[]');
     const updatedPending = allPending.filter((s: any) => s.id !== modalData.id);
     localStorage.setItem('safari_pending_students', JSON.stringify(updatedPending));
     setPendingStudents(updatedPending.filter((s: any) => s.schoolId === schoolId));
 
-    let successMsg = `Student ${newStudent.name} enrolled successfully in ${newStudent.grade} Section ${newStudent.classSection}!`;
+    // Build success message
+    let successMsg = `✅ Student ${newStudent.name} enrolled successfully in ${newStudent.grade} Section ${newStudent.classSection}!`;
+
     if (createdUsers.length > 0) {
-      successMsg += `\n\nLogin credentials created:\n`;
+      successMsg += `\n\n🔑 Login credentials created:\n`;
       createdUsers.forEach((u: any) => {
-        successMsg += `\n${u.type}: ${u.email} / Password: ${u.password}`;
+        const status = u.updated ? ' (updated)' : '';
+        successMsg += `\n${u.type}: ${u.email} / Password: ${u.password}${status}`;
       });
+    } else {
+      successMsg += `\n\n⚠️ No new login credentials created. Existing accounts were updated.`;
+    }
+
+    // Save credentials for modal display
+    const studentCred = createdUsers.find((u: any) => u.type === 'Student');
+    const parentCred = createdUsers.find((u: any) => u.type === 'Parent');
+
+    setCredentialsData({
+      student: studentCred ? {
+        name: studentCred.name,
+        email: studentCred.email,
+        password: studentPassword
+      } : null,
+      parent: parentCred ? {
+        name: parentCred.name,
+        email: parentCred.email,
+        password: parentPassword
+      } : null
+    });
+
+    // Force save to localStorage to ensure persistence
+    try {
+      // Get current users from localStorage and update
+      const currentUsers = JSON.parse(localStorage.getItem('safari_registered_users') || '[]');
+      // Update with our changes - use setRegisteredUsers which already updated the state
+      // Also directly save to localStorage as backup
+      localStorage.setItem('safari_registered_users', JSON.stringify(registeredUsers));
+    } catch (e) {
+      console.error('Error saving users to localStorage:', e);
     }
 
     showNotification(successMsg, 'success');
 
+    // Show credentials modal if new users were created
     if (createdUsers.length > 0) {
-      const studentCred = createdUsers.find((u: any) => u.type === 'Student');
-      const parentCred = createdUsers.find((u: any) => u.type === 'Parent');
-
-      setCredentialsData({
-        student: studentCred ? {
-          name: studentCred.name,
-          email: studentCred.email,
-          password: studentPassword
-        } : null,
-        parent: parentCred ? {
-          name: parentCred.name,
-          email: parentCred.email,
-          password: parentPassword
-        } : null
-      });
       setShowCredentialsModal(true);
     }
 
@@ -2729,6 +2787,252 @@ export default function PrincipalModule({
         </div>
       )}
 
+      {/* ENROLL STUDENT MODAL - UPDATED with credentials */}
+      {showModal && modalType === 'enrollStudent' && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <GraduationCap className="h-5 w-5 text-blue-600" /> Enroll Student
+              </h3>
+              <button
+                onClick={() => { setShowModal(false); setModalData({}); }}
+                className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
+              <p className="text-sm text-blue-700 flex items-center gap-2">
+                <Building2 className="h-4 w-4" />
+                <span>School: <strong>{schoolName || 'Not assigned'}</strong></span>
+              </p>
+            </div>
+
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4">
+              <p className="text-sm text-emerald-700">
+                <CheckCircle className="h-4 w-4 inline mr-1" />
+                Fee paid: <strong>${modalData.feePaid || 0}</strong>
+              </p>
+              <p className="text-xs text-emerald-600 mt-1">
+                <User className="h-3 w-3 inline mr-1" />
+                Student and Parent login accounts will be created automatically with passwords.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="border-b border-slate-200 pb-3 mb-2">
+                <h4 className="font-semibold text-slate-900 text-sm mb-3 flex items-center gap-2">
+                  <GraduationCap className="h-4 w-4 text-blue-500" /> Student Information
+                </h4>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Student Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={modalData.name || modalData.candidateName || ''}
+                    onChange={(e) => setModalData({ ...modalData, name: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                  />
+                </div>
+
+                <div className="mt-3">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Student Email <span className="text-red-500">*</span>
+                    <span className="text-slate-400 font-normal ml-1">(will be used for login)</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={modalData.email || ''}
+                    onChange={(e) => setModalData({ ...modalData, email: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">
+                    Default password: <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded">STU{modalData.id?.slice(-6) || 'XXXXXX'}</span>
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Grade *</label>
+                    <select
+                      value={modalData.grade || 'PreKG'}
+                      onChange={(e) => setModalData({ ...modalData, grade: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                    >
+                      {GRADE_LEVELS.map((g) => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Section *</label>
+                    <select
+                      value={modalData.section || 'A'}
+                      onChange={(e) => setModalData({ ...modalData, section: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                    >
+                      {SECTIONS.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mt-3">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
+                  <input
+                    type="tel"
+                    value={modalData.phone || ''}
+                    onChange={(e) => setModalData({ ...modalData, phone: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-slate-900 text-sm mb-3 flex items-center gap-2">
+                  <Users className="h-4 w-4 text-purple-500" /> Parent/Guardian Information
+                </h4>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Parent Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={modalData.parentName || ''}
+                    onChange={(e) => setModalData({ ...modalData, parentName: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                  />
+                </div>
+
+                <div className="mt-3">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Parent Email <span className="text-red-500">*</span>
+                    <span className="text-slate-400 font-normal ml-1">(will be used for login)</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={modalData.parentEmail || ''}
+                    onChange={(e) => setModalData({ ...modalData, parentEmail: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">
+                    Default password: <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded">PAR{modalData.id?.slice(-6) || 'XXXXXX'}</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-4">
+              <p className="text-sm text-amber-700 flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>
+                  <strong>Login credentials will be automatically created:</strong><br />
+                  Student: <span className="font-mono">{modalData.email || 'student@email.com'}</span> / Password: <span className="font-mono">STU{modalData.id?.slice(-6) || 'XXXXXX'}</span><br />
+                  Parent: <span className="font-mono">{modalData.parentEmail || 'parent@email.com'}</span> / Password: <span className="font-mono">PAR{modalData.id?.slice(-6) || 'XXXXXX'}</span>
+                </span>
+              </p>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => { setShowModal(false); setModalData({}); }}
+                className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEnrollment}
+                className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors cursor-pointer flex items-center justify-center gap-2"
+              >
+                <GraduationCap className="h-4 w-4" /> Enroll & Create Logins
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CREDENTIALS MODAL - UPDATED with copy functionality */}
+      {showCredentialsModal && credentialsData && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold flex items-center gap-2">
+                <KeyRound className="h-5 w-5 text-emerald-600" />
+                Login Credentials Created
+              </h3>
+              <button
+                onClick={() => { setShowCredentialsModal(false); setCredentialsData(null); }}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {credentialsData.student && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <h4 className="font-semibold text-blue-800 text-sm flex items-center gap-2 mb-2">
+                    <GraduationCap className="h-4 w-4" /> Student Login
+                  </h4>
+                  <div className="space-y-1 text-sm">
+                    <p><span className="text-slate-500">Name:</span> <span className="font-medium">{credentialsData.student.name}</span></p>
+                    <p><span className="text-slate-500">Email:</span> <span className="font-medium">{credentialsData.student.email}</span></p>
+                    <p><span className="text-slate-500">Password:</span> <span className="font-mono bg-blue-100 px-2 py-0.5 rounded font-bold">{credentialsData.student.password}</span></p>
+                  </div>
+                </div>
+              )}
+
+              {credentialsData.parent && (
+                <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+                  <h4 className="font-semibold text-purple-800 text-sm flex items-center gap-2 mb-2">
+                    <Users className="h-4 w-4" /> Parent Login
+                  </h4>
+                  <div className="space-y-1 text-sm">
+                    <p><span className="text-slate-500">Name:</span> <span className="font-medium">{credentialsData.parent.name}</span></p>
+                    <p><span className="text-slate-500">Email:</span> <span className="font-medium">{credentialsData.parent.email}</span></p>
+                    <p><span className="text-slate-500">Password:</span> <span className="font-mono bg-purple-100 px-2 py-0.5 rounded font-bold">{credentialsData.parent.password}</span></p>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                <p className="text-sm text-amber-700 flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>⚠️ Please save these credentials. Both users can now login to the school portal.</span>
+                </p>
+              </div>
+
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={() => {
+                    const creds = `Student: ${credentialsData.student?.email || ''} / Password: ${credentialsData.student?.password || ''}\nParent: ${credentialsData.parent?.email || ''} / Password: ${credentialsData.parent?.password || ''}`;
+                    navigator.clipboard?.writeText(creds);
+                    showNotification('Credentials copied to clipboard!', 'success');
+                  }}
+                  className="flex-1 bg-slate-900 text-white py-2.5 rounded-xl font-semibold hover:bg-slate-800 transition-colors cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <span>📋</span> Copy Credentials
+                </button>
+                <button
+                  onClick={() => { setShowCredentialsModal(false); setCredentialsData(null); }}
+                  className="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl font-semibold hover:bg-emerald-700 transition-colors cursor-pointer"
+                >
+                  I've Saved Them
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* APPROVE TEACHER MODAL */}
       {showModal && modalType === 'approveTeacher' && selectedRequest && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -2900,178 +3204,6 @@ export default function PrincipalModule({
         </div>
       )}
 
-      {/* ENROLL STUDENT MODAL */}
-      {showModal && modalType === 'enrollStudent' && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <GraduationCap className="h-5 w-5 text-blue-600" /> Enroll Student
-              </h3>
-              <button
-                onClick={() => { setShowModal(false); setModalData({}); }}
-                className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
-              <p className="text-sm text-blue-700 flex items-center gap-2">
-                <Building2 className="h-4 w-4" />
-                <span>School: <strong>{schoolName || 'Not assigned'}</strong></span>
-              </p>
-            </div>
-
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4">
-              <p className="text-sm text-emerald-700">
-                <CheckCircle className="h-4 w-4 inline mr-1" />
-                Fee paid: <strong>${modalData.feePaid || 0}</strong>
-              </p>
-              <p className="text-xs text-emerald-600 mt-1">
-                <User className="h-3 w-3 inline mr-1" />
-                Student and Parent login accounts will be created automatically.
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="border-b border-slate-200 pb-3 mb-2">
-                <h4 className="font-semibold text-slate-900 text-sm mb-3 flex items-center gap-2">
-                  <GraduationCap className="h-4 w-4 text-blue-500" /> Student Information
-                </h4>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Student Name <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={modalData.name || modalData.candidateName || ''}
-                    onChange={(e) => setModalData({ ...modalData, name: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                  />
-                </div>
-
-                <div className="mt-3">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Student Email <span className="text-red-500">*</span>
-                    <span className="text-slate-400 font-normal ml-1">(will be used for login)</span>
-                  </label>
-                  <input
-                    type="email"
-                    value={modalData.email || ''}
-                    onChange={(e) => setModalData({ ...modalData, email: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                  />
-                  <p className="text-xs text-slate-400 mt-1">
-                    Default password: <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded">STU{modalData.id?.slice(-6) || 'XXXXXX'}</span>
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 mt-3">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Grade *</label>
-                    <select
-                      value={modalData.grade || 'PreKG'}
-                      onChange={(e) => setModalData({ ...modalData, grade: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                    >
-                      {GRADE_LEVELS.map((g) => (
-                        <option key={g} value={g}>{g}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Section *</label>
-                    <select
-                      value={modalData.section || 'A'}
-                      onChange={(e) => setModalData({ ...modalData, section: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                    >
-                      {SECTIONS.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="mt-3">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
-                  <input
-                    type="tel"
-                    value={modalData.phone || ''}
-                    onChange={(e) => setModalData({ ...modalData, phone: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <h4 className="font-semibold text-slate-900 text-sm mb-3 flex items-center gap-2">
-                  <Users className="h-4 w-4 text-purple-500" /> Parent/Guardian Information
-                </h4>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Parent Name <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={modalData.parentName || ''}
-                    onChange={(e) => setModalData({ ...modalData, parentName: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                  />
-                </div>
-
-                <div className="mt-3">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Parent Email <span className="text-red-500">*</span>
-                    <span className="text-slate-400 font-normal ml-1">(will be used for login)</span>
-                  </label>
-                  <input
-                    type="email"
-                    value={modalData.parentEmail || ''}
-                    onChange={(e) => setModalData({ ...modalData, parentEmail: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                  />
-                  <p className="text-xs text-slate-400 mt-1">
-                    Default password: <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded">PAR{modalData.id?.slice(-6) || 'XXXXXX'}</span>
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-4">
-              <p className="text-sm text-amber-700 flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                <span>
-                  <strong>Login credentials will be automatically created:</strong><br />
-                  Student: <span className="font-mono">{modalData.email || 'student@email.com'}</span> / Password: <span className="font-mono">STU{modalData.id?.slice(-6) || 'XXXXXX'}</span><br />
-                  Parent: <span className="font-mono">{modalData.parentEmail || 'parent@email.com'}</span> / Password: <span className="font-mono">PAR{modalData.id?.slice(-6) || 'XXXXXX'}</span>
-                </span>
-              </p>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button
-                type="button"
-                onClick={() => { setShowModal(false); setModalData({}); }}
-                className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveEnrollment}
-                className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-colors cursor-pointer flex items-center justify-center gap-2"
-              >
-                <GraduationCap className="h-4 w-4" /> Enroll & Create Logins
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* BULK APPROVE MODAL */}
       {showModal && modalType === 'bulkApprove' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -3210,66 +3342,6 @@ export default function PrincipalModule({
                   Cancel
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CREDENTIALS MODAL */}
-      {showCredentialsModal && credentialsData && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold flex items-center gap-2">
-                <KeyRound className="h-5 w-5 text-emerald-600" />
-                Login Credentials Created
-              </h3>
-              <button
-                onClick={() => { setShowCredentialsModal(false); setCredentialsData(null); }}
-                className="text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              {credentialsData.student && (
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                  <h4 className="font-semibold text-blue-800 text-sm flex items-center gap-2 mb-2">
-                    <GraduationCap className="h-4 w-4" /> Student Login
-                  </h4>
-                  <div className="space-y-1 text-sm">
-                    <p><span className="text-slate-500">Email:</span> <span className="font-medium">{credentialsData.student.email}</span></p>
-                    <p><span className="text-slate-500">Password:</span> <span className="font-mono bg-blue-100 px-2 py-0.5 rounded">{credentialsData.student.password}</span></p>
-                  </div>
-                </div>
-              )}
-
-              {credentialsData.parent && (
-                <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
-                  <h4 className="font-semibold text-purple-800 text-sm flex items-center gap-2 mb-2">
-                    <Users className="h-4 w-4" /> Parent Login
-                  </h4>
-                  <div className="space-y-1 text-sm">
-                    <p><span className="text-slate-500">Email:</span> <span className="font-medium">{credentialsData.parent.email}</span></p>
-                    <p><span className="text-slate-500">Password:</span> <span className="font-mono bg-purple-100 px-2 py-0.5 rounded">{credentialsData.parent.password}</span></p>
-                  </div>
-                </div>
-              )}
-
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                <p className="text-sm text-amber-700 flex items-start gap-2">
-                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                  <span>Please save these credentials. Both users can now login to the school portal.</span>
-                </p>
-              </div>
-
-              <button
-                onClick={() => { setShowCredentialsModal(false); setCredentialsData(null); }}
-                className="w-full bg-slate-900 text-white py-2.5 rounded-xl font-semibold hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                I've Saved the Credentials
-              </button>
             </div>
           </div>
         </div>
