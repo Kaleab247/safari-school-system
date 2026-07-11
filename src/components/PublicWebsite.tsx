@@ -1,6 +1,6 @@
-// PublicWebsite.tsx - Complete Updated Version
+// PublicWebsite.tsx - Complete Updated Version with Fee Amount Display
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   GraduationCap,
   MapPin,
@@ -62,6 +62,8 @@ export default function PublicWebsite({
   const [admissionSuccess, setAdmissionSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [feeStructures, setFeeStructures] = useState<any[]>([]);
+  const [selectedGradeFee, setSelectedGradeFee] = useState(0);
 
   const [admissionForm, setAdmissionForm] = useState<any>({
     candidateName: '',
@@ -73,6 +75,49 @@ export default function PublicWebsite({
     receiptFiles: [],
     notes: ''
   });
+
+  // Load fee structures on mount and when grade or school changes
+  useEffect(() => {
+    loadFeeStructures();
+  }, []);
+
+  useEffect(() => {
+    calculateFee();
+  }, [admissionForm.gradeApplied, admissionForm.schoolId, feeStructures]);
+
+  const loadFeeStructures = () => {
+    try {
+      const saved = localStorage.getItem('safari_fee_structures');
+      const allFees = saved ? JSON.parse(saved) : [];
+      setFeeStructures(allFees);
+    } catch (error) {
+      console.error('Error loading fee structures:', error);
+      setFeeStructures([]);
+    }
+  };
+
+  const calculateFee = () => {
+    try {
+      // Find fee structure for the selected grade and school
+      const fee = feeStructures.find((f: any) => {
+        const matchesGrade = f.grade === admissionForm.gradeApplied;
+        const matchesSchool = !admissionForm.schoolId || f.schoolId === admissionForm.schoolId || !f.schoolId;
+        return matchesGrade && matchesSchool;
+      });
+
+      const amount = fee ? fee.totalAmount : 0;
+      setSelectedGradeFee(amount);
+
+      // Update the form with the fee amount
+      setAdmissionForm((prev: any) => ({
+        ...prev,
+        feeAmount: amount
+      }));
+    } catch (error) {
+      console.error('Error calculating fee:', error);
+      setSelectedGradeFee(0);
+    }
+  };
 
   // Handle file upload with proper validation
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -140,17 +185,25 @@ export default function PublicWebsite({
       setIsSubmitting(false);
       return;
     }
+    if (!admissionForm.schoolId) {
+      alert('Please select a school!');
+      setIsSubmitting(false);
+      return;
+    }
     if (admissionForm.receiptFiles.length === 0) {
       alert('Please upload at least one payment receipt!');
       setIsSubmitting(false);
       return;
     }
 
-    // Get fee amount for the selected grade
+    // Get fee amount for the selected grade and school
     let feeAmount = 0;
     try {
-      const feeStructures = JSON.parse(localStorage.getItem('safari_fee_structures') || '[]');
-      const fee = feeStructures.find((f: any) => f.grade === admissionForm.gradeApplied);
+      const fee = feeStructures.find((f: any) => {
+        const matchesGrade = f.grade === admissionForm.gradeApplied;
+        const matchesSchool = f.schoolId === admissionForm.schoolId || !f.schoolId;
+        return matchesGrade && matchesSchool;
+      });
       feeAmount = fee ? fee.totalAmount : 0;
     } catch (error) {
       console.error('Error getting fee amount:', error);
@@ -191,6 +244,7 @@ export default function PublicWebsite({
         receiptFiles: [],
         notes: ''
       });
+      setSelectedGradeFee(0);
 
       setTimeout(() => {
         setAdmissionSuccess(false);
@@ -203,6 +257,9 @@ export default function PublicWebsite({
       setIsSubmitting(false);
     }
   };
+
+  // Get active schools
+  const activeSchools = schools.filter((s: any) => s.status === 'active');
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
@@ -460,7 +517,7 @@ export default function PublicWebsite({
         </div>
       )}
 
-      {/* Admission Modal - Fixed */}
+      {/* Admission Modal - Fixed with Fee Display */}
       {showAdmissionModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-3xl p-8 max-w-lg w-full max-h-[90vh] overflow-y-auto">
@@ -548,7 +605,10 @@ export default function PublicWebsite({
                   <select
                     className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
                     value={admissionForm.gradeApplied}
-                    onChange={(e) => setAdmissionForm({...admissionForm, gradeApplied: e.target.value})}
+                    onChange={(e) => {
+                      setAdmissionForm({...admissionForm, gradeApplied: e.target.value});
+                      // Fee will be recalculated via useEffect
+                    }}
                   >
                     {GRADE_LEVELS.map(g => (
                       <option key={g} value={g}>{g}</option>
@@ -556,6 +616,7 @@ export default function PublicWebsite({
                   </select>
                 </div>
 
+                {/* School Selection */}
                 {schools && schools.length > 0 && (
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -565,13 +626,33 @@ export default function PublicWebsite({
                       required
                       className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
                       value={admissionForm.schoolId}
-                      onChange={(e) => setAdmissionForm({...admissionForm, schoolId: e.target.value})}
+                      onChange={(e) => {
+                        setAdmissionForm({...admissionForm, schoolId: e.target.value});
+                        // Fee will be recalculated via useEffect
+                      }}
                     >
                       <option value="">Select a school...</option>
-                      {schools.filter((s: any) => s.status === 'active').map((school: any) => (
+                      {activeSchools.map((school: any) => (
                         <option key={school.id} value={school.id}>{school.name}</option>
                       ))}
                     </select>
+                  </div>
+                )}
+
+                {/* Fee Amount Display */}
+                {admissionForm.schoolId && (
+                  <div className={`p-4 rounded-xl ${selectedGradeFee > 0 ? 'bg-emerald-50 border border-emerald-200' : 'bg-slate-50 border border-slate-200'}`}>
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium text-slate-700">Fee Amount for {admissionForm.gradeApplied}:</span>
+                      <span className={`text-xl font-bold ${selectedGradeFee > 0 ? 'text-emerald-700' : 'text-slate-400'}`}>
+                        {selectedGradeFee > 0 ? `${selectedGradeFee.toLocaleString()} Birr` : 'Not configured'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {selectedGradeFee > 0
+                        ? 'Based on the fee structure set by finance.'
+                        : 'Please contact the school for fee information.'}
+                    </p>
                   </div>
                 )}
 
