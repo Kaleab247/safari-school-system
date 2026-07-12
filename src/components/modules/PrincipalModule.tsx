@@ -1,4 +1,4 @@
-// PrincipalModule.tsx - Complete Updated Version with Fixed Enrollment
+// PrincipalModule.tsx - Complete Fixed Version
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -299,11 +299,16 @@ export default function PrincipalModule({
     const newPassword = prompt(`Enter new password for ${parent.name}:`, 'password123');
     if (newPassword && newPassword.trim() && newPassword.trim().length >= 6) {
       if (setRegisteredUsers) {
-        setRegisteredUsers((prev: any[]) =>
-          prev.map((u: any) =>
-            u.id === parent.id ? { ...u, password: newPassword.trim() } : u
-          )
+        const updatedUsers = registeredUsers.map((u: any) =>
+          u.id === parent.id ? { ...u, password: newPassword.trim() } : u
         );
+        setRegisteredUsers(updatedUsers);
+        // Also save to localStorage directly
+        try {
+          localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
+        } catch (e) {
+          console.error('Error saving users:', e);
+        }
       }
       showNotification(`Password reset for ${parent.name} successfully!`, 'success');
     } else if (newPassword !== null) {
@@ -315,11 +320,15 @@ export default function PrincipalModule({
     const newStatus = parent.isActive !== false ? false : true;
     if (window.confirm(`Set ${newStatus ? 'active' : 'inactive'} for ${parent.name}?`)) {
       if (setRegisteredUsers) {
-        setRegisteredUsers((prev: any[]) =>
-          prev.map((u: any) =>
-            u.id === parent.id ? { ...u, isActive: newStatus } : u
-          )
+        const updatedUsers = registeredUsers.map((u: any) =>
+          u.id === parent.id ? { ...u, isActive: newStatus } : u
         );
+        setRegisteredUsers(updatedUsers);
+        try {
+          localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
+        } catch (e) {
+          console.error('Error saving users:', e);
+        }
       }
       showNotification(`Parent ${newStatus ? 'activated' : 'deactivated'} successfully!`, 'success');
     }
@@ -328,7 +337,13 @@ export default function PrincipalModule({
   const handleDeleteParent = (parent: any) => {
     if (window.confirm(`Are you sure you want to delete ${parent.name}? This will also remove their login access.`)) {
       if (setRegisteredUsers) {
-        setRegisteredUsers((prev: any[]) => prev.filter((u: any) => u.id !== parent.id));
+        const updatedUsers = registeredUsers.filter((u: any) => u.id !== parent.id);
+        setRegisteredUsers(updatedUsers);
+        try {
+          localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
+        } catch (e) {
+          console.error('Error saving users:', e);
+        }
       }
       showNotification(`Parent ${parent.name} deleted successfully!`, 'success');
     }
@@ -435,14 +450,21 @@ export default function PrincipalModule({
         name: newStaff.name,
         email: newStaff.email,
         password: newStaff.password,
-        role: systemRole, // Use the mapped system role
+        role: systemRole,
         schoolId: schoolId,
         schoolName: schoolName,
         isActive: true,
         createdAt: new Date().toISOString(),
         associatedId: newStaff.id
       };
-      setRegisteredUsers((prev: any[]) => [...prev, newUser]);
+      const updatedUsers = [...registeredUsers, newUser];
+      setRegisteredUsers(updatedUsers);
+      // Save directly to localStorage
+      try {
+        localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
+      } catch (e) {
+        console.error('Error saving users:', e);
+      }
     }
 
     showNotification(`Staff ${newStaff.name} added successfully! Login credentials created.`, 'success');
@@ -456,7 +478,13 @@ export default function PrincipalModule({
       saveStaff(staffMembers.filter((s: any) => s.id !== id));
 
       if (setRegisteredUsers && staff) {
-        setRegisteredUsers((prev: any[]) => prev.filter((u: any) => u.email !== staff.email));
+        const updatedUsers = registeredUsers.filter((u: any) => u.email !== staff.email);
+        setRegisteredUsers(updatedUsers);
+        try {
+          localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
+        } catch (e) {
+          console.error('Error saving users:', e);
+        }
       }
 
       showNotification(`Staff ${name} deleted successfully!`, 'success');
@@ -473,11 +501,15 @@ export default function PrincipalModule({
 
       const staff = staffMembers.find((s: any) => s.id === id);
       if (setRegisteredUsers && staff) {
-        setRegisteredUsers((prev: any[]) =>
-          prev.map((u: any) =>
-            u.email === staff.email ? { ...u, password: newPassword.trim() } : u
-          )
+        const updatedUsers = registeredUsers.map((u: any) =>
+          u.email === staff.email ? { ...u, password: newPassword.trim() } : u
         );
+        setRegisteredUsers(updatedUsers);
+        try {
+          localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
+        } catch (e) {
+          console.error('Error saving users:', e);
+        }
       }
 
       showNotification(`Password reset for ${name} successfully!`, 'success');
@@ -496,11 +528,15 @@ export default function PrincipalModule({
 
       const staff = staffMembers.find((s: any) => s.id === id);
       if (setRegisteredUsers && staff) {
-        setRegisteredUsers((prev: any[]) =>
-          prev.map((u: any) =>
-            u.email === staff.email ? { ...u, isActive: newStatus === 'Active' } : u
-          )
+        const updatedUsers = registeredUsers.map((u: any) =>
+          u.email === staff.email ? { ...u, isActive: newStatus === 'Active' } : u
         );
+        setRegisteredUsers(updatedUsers);
+        try {
+          localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
+        } catch (e) {
+          console.error('Error saving users:', e);
+        }
       }
 
       showNotification(`Staff ${newStatus === 'Active' ? 'activated' : 'deactivated'} successfully!`, 'success');
@@ -694,6 +730,8 @@ export default function PrincipalModule({
     }
 
     try {
+      let allUpdatedUsers = [...registeredUsers];
+
       for (const request of selectedRequests) {
         const teacherData = request.teacherData;
 
@@ -726,14 +764,23 @@ export default function PrincipalModule({
           associatedId: teacherData.id
         };
 
-        if (setRegisteredUsers) {
-          setRegisteredUsers((prev: any[]) => [...prev, newUser]);
-        }
-
-        const currentApproved = JSON.parse(localStorage.getItem('safari_approved_teachers') || '[]');
-        currentApproved.push(updatedTeacher);
-        localStorage.setItem('safari_approved_teachers', JSON.stringify(currentApproved));
+        allUpdatedUsers = [...allUpdatedUsers, newUser];
       }
+
+      if (setRegisteredUsers) {
+        setRegisteredUsers(allUpdatedUsers);
+        try {
+          localStorage.setItem('safari_registered_users', JSON.stringify(allUpdatedUsers));
+        } catch (e) {
+          console.error('Error saving users:', e);
+        }
+      }
+
+      const currentApproved = JSON.parse(localStorage.getItem('safari_approved_teachers') || '[]');
+      selectedRequests.forEach(r => {
+        currentApproved.push({ ...r.teacherData, approvedBy: userName, approvedDate: new Date().toISOString() });
+      });
+      localStorage.setItem('safari_approved_teachers', JSON.stringify(currentApproved));
 
       const selectedIds = new Set(selectedRequests.map(r => r.id));
       const allRequests = JSON.parse(localStorage.getItem('safari_pending_teacher_requests') || '[]');
@@ -754,7 +801,7 @@ export default function PrincipalModule({
       console.error('Error in bulk approval:', error);
       showNotification('Failed to approve teachers. Please try again.', 'error');
     }
-  }, [selectedTeachers, pendingTeacherRequests, userName, schoolId, schoolName, setTeachers, setRegisteredUsers, showNotification]);
+  }, [selectedTeachers, pendingTeacherRequests, userName, schoolId, schoolName, setTeachers, setRegisteredUsers, registeredUsers, showNotification, loadApprovedRejectedTeachers]);
 
   // Confirm bulk rejection
   const handleConfirmBulkRejection = useCallback(() => {
@@ -816,7 +863,7 @@ export default function PrincipalModule({
       console.error('Error in bulk rejection:', error);
       showNotification('Failed to reject teachers. Please try again.', 'error');
     }
-  }, [selectedTeachers, pendingTeacherRequests, rejectionReason, userName, schoolId, setTeachers, showNotification]);
+  }, [selectedTeachers, pendingTeacherRequests, rejectionReason, userName, schoolId, setTeachers, showNotification, loadApprovedRejectedTeachers]);
 
   // ============ SINGLE TEACHER HANDLERS ============
   const handleApproveTeacher = (request: any) => {
@@ -877,7 +924,13 @@ export default function PrincipalModule({
       };
 
       if (setRegisteredUsers) {
-        setRegisteredUsers((prev: any[]) => [...prev, newUser]);
+        const updatedUsers = [...registeredUsers, newUser];
+        setRegisteredUsers(updatedUsers);
+        try {
+          localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
+        } catch (e) {
+          console.error('Error saving users:', e);
+        }
       }
 
       const currentApproved = JSON.parse(localStorage.getItem('safari_approved_teachers') || '[]');
@@ -901,7 +954,7 @@ export default function PrincipalModule({
       console.error('Error in approval:', error);
       showNotification('Failed to approve teacher. Please try again.', 'error');
     }
-  }, [selectedRequest, userName, schoolId, schoolName, setTeachers, setRegisteredUsers, showNotification]);
+  }, [selectedRequest, userName, schoolId, schoolName, setTeachers, setRegisteredUsers, registeredUsers, showNotification]);
 
   const handleRejectTeacher = (request: any) => {
     setSelectedRequest(request);
@@ -1049,7 +1102,13 @@ export default function PrincipalModule({
       if (setRegisteredUsers) {
         const teacher = teachers.find((t: any) => t.id === id);
         if (teacher) {
-          setRegisteredUsers((prev: any[]) => prev.filter((u: any) => u.email !== teacher.email));
+          const updatedUsers = registeredUsers.filter((u: any) => u.email !== teacher.email);
+          setRegisteredUsers(updatedUsers);
+          try {
+            localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
+          } catch (e) {
+            console.error('Error saving users:', e);
+          }
         }
       }
 
@@ -1071,11 +1130,15 @@ export default function PrincipalModule({
       if (setRegisteredUsers) {
         const teacher = teachers.find((t: any) => t.id === id);
         if (teacher) {
-          setRegisteredUsers((prev: any[]) =>
-            prev.map((u: any) =>
-              u.email === teacher.email ? { ...u, password: newPassword.trim() } : u
-            )
+          const updatedUsers = registeredUsers.map((u: any) =>
+            u.email === teacher.email ? { ...u, password: newPassword.trim() } : u
           );
+          setRegisteredUsers(updatedUsers);
+          try {
+            localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
+          } catch (e) {
+            console.error('Error saving users:', e);
+          }
         }
       }
 
@@ -1099,11 +1162,15 @@ export default function PrincipalModule({
       if (setRegisteredUsers) {
         const teacher = teachers.find((t: any) => t.id === id);
         if (teacher) {
-          setRegisteredUsers((prev: any[]) =>
-            prev.map((u: any) =>
-              u.email === teacher.email ? { ...u, isActive: newStatus === 'Active' } : u
-            )
+          const updatedUsers = registeredUsers.map((u: any) =>
+            u.email === teacher.email ? { ...u, isActive: newStatus === 'Active' } : u
           );
+          setRegisteredUsers(updatedUsers);
+          try {
+            localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
+          } catch (e) {
+            console.error('Error saving users:', e);
+          }
         }
       }
 
@@ -1124,6 +1191,7 @@ export default function PrincipalModule({
     setShowModal(true);
   };
 
+  // FIXED: This is the critical function that was causing login issues
   const handleSaveEnrollment = () => {
     if (!modalData.name?.trim() || !modalData.email?.trim()) {
       showNotification('Student name and email are required!', 'error');
@@ -1170,16 +1238,17 @@ export default function PrincipalModule({
       setStudents((prev: any[]) => [...prev, newStudent]);
     }
 
-    // FIXED: Generate passwords
+    // Generate passwords
     const studentPassword = `STU${newStudent.id.slice(-6)}`;
     const parentPassword = `PAR${newStudent.id.slice(-6)}`;
 
     const createdUsers = [];
+    let updatedUsers = [...registeredUsers];
 
     // Create STUDENT user account - FIXED: properly save with password
     if (newStudent.email && setRegisteredUsers) {
       // Check if student user already exists
-      const studentExists = registeredUsers.some(
+      const studentExists = updatedUsers.some(
         (u: any) => u.email.toLowerCase() === newStudent.email.toLowerCase()
       );
 
@@ -1197,16 +1266,14 @@ export default function PrincipalModule({
           createdAt: new Date().toISOString()
         };
 
-        setRegisteredUsers((prev: any[]) => [...prev, studentUser]);
+        updatedUsers = [...updatedUsers, studentUser];
         createdUsers.push({ type: 'Student', ...studentUser });
       } else {
         // Update existing student user with correct password
-        setRegisteredUsers((prev: any[]) =>
-          prev.map((u: any) =>
-            u.email.toLowerCase() === newStudent.email.toLowerCase()
-              ? { ...u, password: studentPassword, associatedId: newStudent.id }
-              : u
-          )
+        updatedUsers = updatedUsers.map((u: any) =>
+          u.email.toLowerCase() === newStudent.email.toLowerCase()
+            ? { ...u, password: studentPassword, associatedId: newStudent.id }
+            : u
         );
         createdUsers.push({
           type: 'Student',
@@ -1220,7 +1287,7 @@ export default function PrincipalModule({
 
     // Create PARENT user account - FIXED: properly save with password
     if (newStudent.parentEmail && setRegisteredUsers) {
-      const parentExists = registeredUsers.some(
+      const parentExists = updatedUsers.some(
         (u: any) => u.email.toLowerCase() === newStudent.parentEmail.toLowerCase()
       );
 
@@ -1238,16 +1305,14 @@ export default function PrincipalModule({
           createdAt: new Date().toISOString()
         };
 
-        setRegisteredUsers((prev: any[]) => [...prev, parentUser]);
+        updatedUsers = [...updatedUsers, parentUser];
         createdUsers.push({ type: 'Parent', ...parentUser });
       } else {
         // Update existing parent user with correct password
-        setRegisteredUsers((prev: any[]) =>
-          prev.map((u: any) =>
-            u.email.toLowerCase() === newStudent.parentEmail.toLowerCase()
-              ? { ...u, password: parentPassword, associatedId: newStudent.id }
-              : u
-          )
+        updatedUsers = updatedUsers.map((u: any) =>
+          u.email.toLowerCase() === newStudent.parentEmail.toLowerCase()
+            ? { ...u, password: parentPassword, associatedId: newStudent.id }
+            : u
         );
         createdUsers.push({
           type: 'Parent',
@@ -1257,6 +1322,19 @@ export default function PrincipalModule({
           updated: true
         });
       }
+    }
+
+    // FIXED: CRITICAL - Update the state and localStorage
+    if (setRegisteredUsers) {
+      setRegisteredUsers(updatedUsers);
+    }
+
+    // FIXED: CRITICAL - Directly save to localStorage as backup
+    try {
+      localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
+      console.log('✅ Users saved to localStorage:', updatedUsers.length);
+    } catch (e) {
+      console.error('Error saving users to localStorage:', e);
     }
 
     // Remove from pending students
@@ -1294,17 +1372,6 @@ export default function PrincipalModule({
         password: parentPassword
       } : null
     });
-
-    // Force save to localStorage to ensure persistence
-    try {
-      // Get current users from localStorage and update
-      const currentUsers = JSON.parse(localStorage.getItem('safari_registered_users') || '[]');
-      // Update with our changes - use setRegisteredUsers which already updated the state
-      // Also directly save to localStorage as backup
-      localStorage.setItem('safari_registered_users', JSON.stringify(registeredUsers));
-    } catch (e) {
-      console.error('Error saving users to localStorage:', e);
-    }
 
     showNotification(successMsg, 'success');
 
@@ -1368,6 +1435,7 @@ export default function PrincipalModule({
     showNotification('Queue refreshed!', 'info');
   };
 
+  // ============ RENDER ============
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -1429,7 +1497,7 @@ export default function PrincipalModule({
         >
           <div className="flex items-center gap-2">
             <div className="p-2 bg-yellow-100 rounded-xl">
-              <Clock className="h-5 w-5 text-yellow-600" />
+              <ClockIcon className="h-5 w-5 text-yellow-600" />
             </div>
             <div>
               <p className="text-sm text-slate-500">Pending Enrollment</p>
@@ -1612,7 +1680,7 @@ export default function PrincipalModule({
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
               <div className="flex items-center gap-3 mb-3">
                 <div className="p-3 bg-yellow-100 rounded-xl">
-                  <Clock className="h-6 w-6 text-yellow-600" />
+                  <ClockIcon className="h-6 w-6 text-yellow-600" />
                 </div>
                 <div>
                   <h4 className="font-semibold text-slate-900">Pending Approvals</h4>
@@ -1676,7 +1744,7 @@ export default function PrincipalModule({
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
             <h3 className="font-semibold text-slate-900 flex items-center gap-2">
-              <Clock className="h-4 w-4" /> Pending Enrollment ({pendingStudents.length})
+              <ClockIcon className="h-4 w-4" /> Pending Enrollment ({pendingStudents.length})
             </h3>
             <div className="flex gap-2 items-center">
               <div className="relative">
@@ -2787,7 +2855,7 @@ export default function PrincipalModule({
         </div>
       )}
 
-      {/* ENROLL STUDENT MODAL - UPDATED with credentials */}
+      {/* ENROLL STUDENT MODAL - FIXED with proper credentials saving */}
       {showModal && modalType === 'enrollStudent' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl">
@@ -2959,7 +3027,7 @@ export default function PrincipalModule({
         </div>
       )}
 
-      {/* CREDENTIALS MODAL - UPDATED with copy functionality */}
+      {/* CREDENTIALS MODAL - FIXED with copy functionality */}
       {showCredentialsModal && credentialsData && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
@@ -3234,8 +3302,7 @@ export default function PrincipalModule({
                     .filter(r => selectedTeachers.has(r.id))
                     .map(r => (
                       <li key={r.id} className="py-0.5">• {r.teacherData.name}</li>
-                    ))
-                  }
+                    ))}
                 </ul>
               </div>
 
@@ -3299,8 +3366,7 @@ export default function PrincipalModule({
                     .filter(r => selectedTeachers.has(r.id))
                     .map(r => (
                       <li key={r.id} className="py-0.5">• {r.teacherData.name}</li>
-                    ))
-                  }
+                    ))}
                 </ul>
               </div>
 
@@ -3342,6 +3408,166 @@ export default function PrincipalModule({
                   Cancel
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW REQUEST DETAILS MODAL */}
+      {showRequestModal && selectedRequest && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">Teacher Request Details</h3>
+              <button
+                onClick={() => { setShowRequestModal(false); setSelectedRequest(null); }}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-slate-50 p-3 rounded-xl">
+                  <p className="text-xs text-slate-500">Name</p>
+                  <p className="font-bold">{selectedRequest.teacherData.name}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl">
+                  <p className="text-xs text-slate-500">Email</p>
+                  <p className="font-bold text-sm">{selectedRequest.teacherData.email}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl">
+                  <p className="text-xs text-slate-500">Department</p>
+                  <p className="font-bold">{selectedRequest.teacherData.department || 'N/A'}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl">
+                  <p className="text-xs text-slate-500">Subjects</p>
+                  <p className="font-bold">{(selectedRequest.teacherData.subjects || []).join(', ') || 'N/A'}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl col-span-2">
+                  <p className="text-xs text-slate-500">Requested By</p>
+                  <p className="font-bold">{selectedRequest.requestedBy} ({selectedRequest.requestedByRole})</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl col-span-2">
+                  <p className="text-xs text-slate-500">Requested Date</p>
+                  <p className="font-bold">{new Date(selectedRequest.requestedDate).toLocaleString()}</p>
+                </div>
+                {selectedRequest.notes && (
+                  <div className="bg-slate-50 p-3 rounded-xl col-span-2">
+                    <p className="text-xs text-slate-500">Notes</p>
+                    <p className="text-sm">{selectedRequest.notes}</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-3 pt-2 border-t border-slate-200">
+                <button
+                  onClick={() => {
+                    setShowRequestModal(false);
+                    handleApproveTeacher(selectedRequest);
+                  }}
+                  className="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl font-semibold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <CheckCircleIcon className="h-4 w-4" /> Approve
+                </button>
+                <button
+                  onClick={() => {
+                    setShowRequestModal(false);
+                    handleRejectTeacher(selectedRequest);
+                  }}
+                  className="flex-1 bg-red-600 text-white py-2.5 rounded-xl font-semibold hover:bg-red-700 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <XCircleIcon className="h-4 w-4" /> Reject
+                </button>
+                <button
+                  onClick={() => { setShowRequestModal(false); setSelectedRequest(null); }}
+                  className="flex-1 bg-slate-200 text-slate-700 py-2.5 rounded-xl font-semibold hover:bg-slate-300 transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW TEACHER DETAILS MODAL */}
+      {showTeacherDetailsModal && selectedTeacherDetails && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">Teacher Details</h3>
+              <button
+                onClick={() => { setShowTeacherDetailsModal(false); setSelectedTeacherDetails(null); }}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-slate-50 p-3 rounded-xl">
+                  <p className="text-xs text-slate-500">Name</p>
+                  <p className="font-bold">{selectedTeacherDetails.name}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl">
+                  <p className="text-xs text-slate-500">Email</p>
+                  <p className="font-bold text-sm">{selectedTeacherDetails.email}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl">
+                  <p className="text-xs text-slate-500">Department</p>
+                  <p className="font-bold">{selectedTeacherDetails.department || 'N/A'}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl">
+                  <p className="text-xs text-slate-500">Status</p>
+                  <span className={`px-2 py-0.5 rounded-full text-xs ${
+                    selectedTeacherDetails.status === 'Active' ? 'bg-green-100 text-green-700' :
+                    selectedTeacherDetails.status === 'Pending' ? 'bg-yellow-100 text-yellow-700' :
+                    'bg-red-100 text-red-700'
+                  }`}>
+                    {selectedTeacherDetails.status || 'Active'}
+                  </span>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl">
+                  <p className="text-xs text-slate-500">Approval Status</p>
+                  <span className={`px-2 py-0.5 rounded-full text-xs ${
+                    selectedTeacherDetails.approvalStatus === 'approved' ? 'bg-green-100 text-green-700' :
+                    selectedTeacherDetails.approvalStatus === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                    'bg-red-100 text-red-700'
+                  }`}>
+                    {selectedTeacherDetails.approvalStatus || 'N/A'}
+                  </span>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl">
+                  <p className="text-xs text-slate-500">School</p>
+                  <p className="font-bold">{selectedTeacherDetails.schoolName || 'N/A'}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl col-span-2">
+                  <p className="text-xs text-slate-500">Subjects</p>
+                  <p className="font-bold">{(selectedTeacherDetails.subjects || []).join(', ') || 'N/A'}</p>
+                </div>
+                {selectedTeacherDetails.qualifications && selectedTeacherDetails.qualifications.length > 0 && (
+                  <div className="bg-slate-50 p-3 rounded-xl col-span-2">
+                    <p className="text-xs text-slate-500">Qualifications</p>
+                    <p className="font-bold">{(selectedTeacherDetails.qualifications || []).join(', ')}</p>
+                  </div>
+                )}
+                {selectedTeacherDetails.hireDate && (
+                  <div className="bg-slate-50 p-3 rounded-xl col-span-2">
+                    <p className="text-xs text-slate-500">Hire Date</p>
+                    <p className="font-bold">{new Date(selectedTeacherDetails.hireDate).toLocaleDateString()}</p>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => { setShowTeacherDetailsModal(false); setSelectedTeacherDetails(null); }}
+                className="w-full bg-slate-200 text-slate-700 py-2.5 rounded-xl font-semibold hover:bg-slate-300 transition-colors cursor-pointer"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

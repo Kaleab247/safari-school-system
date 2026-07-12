@@ -1,3 +1,5 @@
+// App.tsx - Complete Fixed Version
+
 import React, { useState } from 'react';
 import {
   GraduationCap,
@@ -159,7 +161,15 @@ export default function App() {
       createdAt: new Date().toISOString()
     };
 
-    setRegisteredUsers([...registeredUsers, newUser]);
+    const updatedUsers = [...registeredUsers, newUser];
+    setRegisteredUsers(updatedUsers);
+    // Directly save to localStorage as backup
+    try {
+      localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
+    } catch (e) {
+      console.error('Error saving users:', e);
+    }
+
     logAudit(`Created new user: ${newUser.name} (${newUser.role})`);
 
     setUserManagementSuccess(`User ${newUser.name} created successfully!`);
@@ -181,17 +191,37 @@ export default function App() {
       return;
     }
     const user = registeredUsers.find(u => u.id === userId);
-    setRegisteredUsers(registeredUsers.filter(u => u.id !== userId));
+    const updatedUsers = registeredUsers.filter(u => u.id !== userId);
+    setRegisteredUsers(updatedUsers);
+    try {
+      localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
+    } catch (e) {
+      console.error('Error saving users:', e);
+    }
     logAudit(`Deleted user: ${user?.name || userEmail}`);
   };
 
-  // Login handler with teacher approval check
+  // FIXED: Login handler with direct localStorage check
   const handleLogin = (email: string, password: string) => {
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedPassword = password.trim();
 
-    const user = registeredUsers.find(
-      u => u.email.toLowerCase() === normalizedEmail && u.password === normalizedPassword
+    // ✅ FIX: Read fresh data from localStorage directly
+    let users = registeredUsers;
+    try {
+      const storedUsers = localStorage.getItem('safari_registered_users');
+      if (storedUsers) {
+        const parsed = JSON.parse(storedUsers);
+        if (parsed.length > 0) {
+          users = parsed;
+        }
+      }
+    } catch (e) {
+      console.error('Error reading users from localStorage:', e);
+    }
+
+    const user = users.find(
+      (u: any) => u.email.toLowerCase() === normalizedEmail && u.password === normalizedPassword
     );
 
     if (user) {
@@ -233,6 +263,7 @@ export default function App() {
       return true;
     }
 
+    setLoginError('Invalid email or password. Please try again.');
     return false;
   };
 
@@ -286,14 +317,14 @@ export default function App() {
     return currentUser?.name || 'User';
   };
 
-  // Admission handler - UPDATED to store fee amount
+  // FIXED: Admission handler - stores fee amount and creates parent/student accounts
   const handleAddAdmission = (appData: any) => {
     const newApp = {
       ...appData,
       id: generateId('ADM-'),
       submittedDate: new Date().toLocaleDateString('en-US'),
       status: 'PaymentPending' as const,
-      feeAmount: appData.feeAmount || 0, // Store the fee amount
+      feeAmount: appData.feeAmount || 0,
     };
     setAdmissions((prev: any[]) => [newApp, ...prev]);
     logAudit(`Admission application submitted for: ${appData.candidateName} (School: ${appData.schoolName || 'N/A'})`);
@@ -316,7 +347,7 @@ export default function App() {
     logAudit(`Transaction: ${desc} (Birr ${amount})`);
   };
 
-  // Add student handler - UPDATED to create student and parent user accounts
+  // FIXED: Add student handler - creates student and parent user accounts with proper password saving
   const handleAddStudent = (studentData: any) => {
     const newStudent = {
       ...studentData,
@@ -335,14 +366,16 @@ export default function App() {
 
     setStudents((prev: any[]) => [newStudent, ...prev]);
 
+    let updatedUsers = [...registeredUsers];
+
     // Create student user account if email is provided
     if (newStudent.email) {
-      const studentUserExists = registeredUsers.some(
+      const studentPassword = `STU${newStudent.id.slice(-6)}`;
+      const studentUserExists = updatedUsers.some(
         (u: any) => u.email.toLowerCase() === newStudent.email.toLowerCase()
       );
 
       if (!studentUserExists) {
-        const studentPassword = `STU${newStudent.id.slice(-6)}`;
         const studentUser = {
           id: generateId('USR-'),
           name: newStudent.name,
@@ -355,19 +388,19 @@ export default function App() {
           associatedId: newStudent.id,
           createdAt: new Date().toISOString()
         };
-        setRegisteredUsers((prev: any[]) => [...prev, studentUser]);
+        updatedUsers = [...updatedUsers, studentUser];
         logAudit(`Student user account created: ${newStudent.email} (${studentPassword})`);
       }
     }
 
     // Create parent user account if parent email is provided
     if (newStudent.parentEmail) {
-      const parentUserExists = registeredUsers.some(
+      const parentPassword = `PAR${newStudent.id.slice(-6)}`;
+      const parentUserExists = updatedUsers.some(
         (u: any) => u.email.toLowerCase() === newStudent.parentEmail.toLowerCase()
       );
 
       if (!parentUserExists) {
-        const parentPassword = `PAR${newStudent.id.slice(-6)}`;
         const parentUser = {
           id: generateId('USR-'),
           name: newStudent.parentName || `${newStudent.name}'s Parent`,
@@ -380,8 +413,18 @@ export default function App() {
           associatedId: newStudent.id,
           createdAt: new Date().toISOString()
         };
-        setRegisteredUsers((prev: any[]) => [...prev, parentUser]);
+        updatedUsers = [...updatedUsers, parentUser];
         logAudit(`Parent user account created: ${newStudent.parentEmail} (${parentPassword})`);
+      }
+    }
+
+    // FIXED: Update state and localStorage
+    if (updatedUsers.length > registeredUsers.length) {
+      setRegisteredUsers(updatedUsers);
+      try {
+        localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
+      } catch (e) {
+        console.error('Error saving users:', e);
       }
     }
 
@@ -662,7 +705,7 @@ export default function App() {
                   setIsSigningIn(false);
                   const success = handleLogin(loginEmail.trim(), loginPassword.trim());
                   if (!success) {
-                    setLoginError('Invalid email or password. Please try again.');
+                    // Error message is set inside handleLogin
                   }
                 }, 800);
               }}
@@ -714,6 +757,12 @@ export default function App() {
                   </>
                 )}
               </button>
+
+              {/* Default credentials hint */}
+              <div className="text-center text-[10px] text-slate-400 border-t border-slate-100 pt-3 mt-2">
+                <p>Default: admin@myschool.edu / admin123</p>
+                <p className="mt-0.5">Students/Parents: Use credentials provided during enrollment</p>
+              </div>
             </form>
           </div>
         </div>
