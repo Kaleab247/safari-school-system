@@ -1,4 +1,4 @@
-// PrincipalModule.tsx - Complete Fixed Version
+// PrincipalModule.tsx - Complete Fixed Version with Credentials Fix
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -1192,6 +1192,7 @@ export default function PrincipalModule({
   };
 
   // FIXED: This is the critical function that was causing login issues
+  // Now properly saves credentials and displays them in the modal
   const handleSaveEnrollment = () => {
     if (!modalData.name?.trim() || !modalData.email?.trim()) {
       showNotification('Student name and email are required!', 'error');
@@ -1356,27 +1357,40 @@ export default function PrincipalModule({
       successMsg += `\n\n⚠️ No new login credentials created. Existing accounts were updated.`;
     }
 
-    // Save credentials for modal display
+    // FIXED: Save credentials for modal display - store the actual passwords
     const studentCred = createdUsers.find((u: any) => u.type === 'Student');
     const parentCred = createdUsers.find((u: any) => u.type === 'Parent');
 
+    // FIXED: Set credentials data with the actual passwords from the created users
     setCredentialsData({
       student: studentCred ? {
         name: studentCred.name,
         email: studentCred.email,
-        password: studentPassword
-      } : null,
+        password: studentCred.password // Use the actual password from createdUsers
+      } : (newStudent.email ? {
+        name: newStudent.name,
+        email: newStudent.email,
+        password: studentPassword // Fallback to generated password
+      } : null),
       parent: parentCred ? {
         name: parentCred.name,
         email: parentCred.email,
-        password: parentPassword
-      } : null
+        password: parentCred.password // Use the actual password from createdUsers
+      } : (newStudent.parentEmail ? {
+        name: newStudent.parentName || `${newStudent.name}'s Parent`,
+        email: newStudent.parentEmail,
+        password: parentPassword // Fallback to generated password
+      } : null),
+      // FIXED: Add student name for the modal title
+      studentName: newStudent.name,
+      grade: newStudent.grade
     });
 
     showNotification(successMsg, 'success');
 
-    // Show credentials modal if new users were created
-    if (createdUsers.length > 0) {
+    // FIXED: Show credentials modal if we have credentials to display
+    if (createdUsers.length > 0 || newStudent.email || newStudent.parentEmail) {
+      console.log('📋 Showing credentials modal with data:', credentialsData);
       setShowCredentialsModal(true);
     }
 
@@ -1795,7 +1809,7 @@ export default function PrincipalModule({
                       <td className="px-4 py-3">
                         <button
                           onClick={() => handleEnrollStudent(student)}
-                          className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors cursor-pointer flex items-center gap-1"
+                          className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors flex items-center gap-1 cursor-pointer"
                         >
                           <UserPlus className="h-3 w-3" /> Enroll
                         </button>
@@ -3027,10 +3041,10 @@ export default function PrincipalModule({
         </div>
       )}
 
-      {/* CREDENTIALS MODAL - FIXED with copy functionality */}
+      {/* CREDENTIALS MODAL - FIXED with copy functionality and correct credential display */}
       {showCredentialsModal && credentialsData && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border-2 border-emerald-200">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold flex items-center gap-2">
                 <KeyRound className="h-5 w-5 text-emerald-600" />
@@ -3044,6 +3058,13 @@ export default function PrincipalModule({
               </button>
             </div>
 
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4">
+              <p className="text-sm text-emerald-700 flex items-center gap-2">
+                <GraduationCap className="h-4 w-4" />
+                <span>Student: <strong>{credentialsData.studentName || 'N/A'}</strong> ({credentialsData.grade || 'N/A'})</span>
+              </p>
+            </div>
+
             <div className="space-y-4">
               {credentialsData.student && (
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
@@ -3053,7 +3074,7 @@ export default function PrincipalModule({
                   <div className="space-y-1 text-sm">
                     <p><span className="text-slate-500">Name:</span> <span className="font-medium">{credentialsData.student.name}</span></p>
                     <p><span className="text-slate-500">Email:</span> <span className="font-medium">{credentialsData.student.email}</span></p>
-                    <p><span className="text-slate-500">Password:</span> <span className="font-mono bg-blue-100 px-2 py-0.5 rounded font-bold">{credentialsData.student.password}</span></p>
+                    <p><span className="text-slate-500">Password:</span> <span className="font-mono bg-blue-100 px-2 py-0.5 rounded font-bold text-blue-700">{credentialsData.student.password}</span></p>
                   </div>
                 </div>
               )}
@@ -3066,7 +3087,7 @@ export default function PrincipalModule({
                   <div className="space-y-1 text-sm">
                     <p><span className="text-slate-500">Name:</span> <span className="font-medium">{credentialsData.parent.name}</span></p>
                     <p><span className="text-slate-500">Email:</span> <span className="font-medium">{credentialsData.parent.email}</span></p>
-                    <p><span className="text-slate-500">Password:</span> <span className="font-mono bg-purple-100 px-2 py-0.5 rounded font-bold">{credentialsData.parent.password}</span></p>
+                    <p><span className="text-slate-500">Password:</span> <span className="font-mono bg-purple-100 px-2 py-0.5 rounded font-bold text-purple-700">{credentialsData.parent.password}</span></p>
                   </div>
                 </div>
               )}
@@ -3081,9 +3102,17 @@ export default function PrincipalModule({
               <div className="flex gap-2 flex-wrap">
                 <button
                   onClick={() => {
-                    const creds = `Student: ${credentialsData.student?.email || ''} / Password: ${credentialsData.student?.password || ''}\nParent: ${credentialsData.parent?.email || ''} / Password: ${credentialsData.parent?.password || ''}`;
-                    navigator.clipboard?.writeText(creds);
-                    showNotification('Credentials copied to clipboard!', 'success');
+                    let creds = '';
+                    if (credentialsData.student) {
+                      creds += `Student Email: ${credentialsData.student.email}\nStudent Password: ${credentialsData.student.password}\n`;
+                    }
+                    if (credentialsData.parent) {
+                      creds += `Parent Email: ${credentialsData.parent.email}\nParent Password: ${credentialsData.parent.password}`;
+                    }
+                    if (creds) {
+                      navigator.clipboard?.writeText(creds);
+                      showNotification('Credentials copied to clipboard!', 'success');
+                    }
                   }}
                   className="flex-1 bg-slate-900 text-white py-2.5 rounded-xl font-semibold hover:bg-slate-800 transition-colors cursor-pointer flex items-center justify-center gap-2"
                 >
