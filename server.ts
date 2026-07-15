@@ -1,7 +1,13 @@
+// server.ts - Updated with receipt API
 import express from 'express';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
+import receiptRoutes from './server/receipts.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
@@ -9,6 +15,9 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+
+// Mount receipt routes BEFORE Vite middleware
+app.use('/api/receipts', receiptRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -20,7 +29,7 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Simple chat endpoint (no AI)
+// Simple chat endpoint
 app.post('/api/chat', async (req, res) => {
   const { message } = req.body;
 
@@ -50,12 +59,25 @@ app.post('/api/chat', async (req, res) => {
 
 async function configureServer() {
   if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-    console.log('✅ Vite development server mounted');
+    try {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+      console.log('✅ Vite development server mounted');
+    } catch (error) {
+      console.error('❌ Failed to mount Vite:', error);
+      // Fallback to static files
+      const distPath = path.join(process.cwd(), 'dist');
+      if (fs.existsSync(distPath)) {
+        app.use(express.static(distPath));
+        app.get('*', (req, res) => {
+          res.sendFile(path.join(distPath, 'index.html'));
+        });
+        console.log('✅ Serving static files from dist');
+      }
+    }
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
@@ -68,7 +90,11 @@ async function configureServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 School Management System running at http://localhost:${PORT}`);
     console.log('📊 AI Mode: Offline (No API required)');
+    console.log(`📁 Receipts stored in: ${path.join(process.cwd(), 'students_receipts')}`);
   });
 }
+
+// Need to import fs for the fallback
+import fs from 'fs';
 
 configureServer();

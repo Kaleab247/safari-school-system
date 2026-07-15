@@ -1,4 +1,4 @@
-// FinanceModule.tsx - Fixed Receipt Handling (NO instanceof)
+// FinanceModule.tsx - Complete Fixed Version with Server Receipt Handling
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -10,7 +10,7 @@ import {
   EyeOff, Maximize2, Minimize2, Settings, Save,
   Edit2, Percent, Calendar, Users, BookOpen,
   School, Award, BarChart3, PieChart, User,
-  AlertTriangle, RefreshCw, Upload
+  AlertTriangle, RefreshCw, Upload, Loader2
 } from 'lucide-react';
 
 interface FinanceModuleProps {
@@ -75,6 +75,10 @@ export default function FinanceModule({
   const [editingFee, setEditingFee] = useState<FeeStructure | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [receiptDataUrl, setReceiptDataUrl] = useState<string | null>(null);
+  const [isLoadingReceipt, setIsLoadingReceipt] = useState(false);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
+  const [allReceiptFiles, setAllReceiptFiles] = useState<any[]>([]);
+  const [selectedReceiptIndex, setSelectedReceiptIndex] = useState(0);
 
   // If schoolId is passed, automatically select it
   useEffect(() => {
@@ -184,12 +188,11 @@ export default function FinanceModule({
     );
   };
 
-  // ============ FIXED: Safe type checking (NO instanceof) ============
+  // ============ RECEIPT HANDLING ============
 
   // Helper to check if an object is a File/Blob
   const isFileLike = (obj: any): boolean => {
     if (!obj || typeof obj !== 'object') return false;
-    // Check for File/Blob properties
     return (
       typeof obj.size === 'number' &&
       typeof obj.type === 'string' &&
@@ -198,7 +201,7 @@ export default function FinanceModule({
     );
   };
 
-  // Helper to safely read a file as data URL
+  // Helper to read a file as data URL
   const readFileAsDataURL = (file: any): Promise<string> => {
     return new Promise((resolve, reject) => {
       try {
@@ -218,48 +221,116 @@ export default function FinanceModule({
     });
   };
 
-  // ============ FIXED: Receipt Viewing with Safe Handling ============
+  // Get receipt URL from server
+  const getReceiptUrl = (filename: string) => {
+    return `/api/receipts/file/${filename}`;
+  };
 
+  // View receipt modal
   const handleViewReceipt = (payment: any) => {
     setSelectedPayment(payment);
     setSelectedReceiptFile(null);
     setReceiptDataUrl(null);
+    setReceiptError(null);
+    setSelectedReceiptIndex(0);
+    setAllReceiptFiles([]);
     setShowReceiptModal(true);
 
-    // If there are receipt files, try to load the first one
+    // Collect all receipt files
+    let files: any[] = [];
+
     if (payment.receiptFiles && payment.receiptFiles.length > 0) {
-      const firstFile = payment.receiptFiles[0];
-      loadReceiptFile(firstFile);
+      files = payment.receiptFiles;
     } else if (payment.receiptFile) {
-      loadReceiptFile(payment.receiptFile);
+      files = [payment.receiptFile];
+    }
+
+    setAllReceiptFiles(files);
+
+    if (files.length > 0) {
+      loadReceiptFile(files[0]);
     }
   };
 
-  // FIXED: Load the actual receipt file data (NO instanceof)
+  // Load the actual receipt file data
   const loadReceiptFile = async (file: any) => {
     console.log('Loading receipt file:', file);
+    setIsLoadingReceipt(true);
+    setReceiptError(null);
 
     try {
-      // Case 1: File has dataUrl already
-      if (file && file.dataUrl) {
-        setReceiptDataUrl(file.dataUrl);
-        setSelectedReceiptFile(file);
+      // Case 1: File has a server URL (stored on server)
+      if (file && file.url) {
+        // Check if URL is a full URL or relative
+        const fullUrl = file.url.startsWith('http') ? file.url : `/api/receipts/file/${file.storedName || file.url.split('/').pop()}`;
+        setReceiptDataUrl(fullUrl);
+        setSelectedReceiptFile({ ...file, dataUrl: fullUrl });
+        setIsLoadingReceipt(false);
         return;
       }
 
-      // Case 2: File has a file object with actual data
+      // Case 2: File has a storedName (server file)
+      if (file && file.storedName) {
+        const fileUrl = `/api/receipts/file/${file.storedName}`;
+        // Verify the file exists
+        try {
+          const response = await fetch(fileUrl, { method: 'HEAD' });
+          if (response.ok) {
+            setReceiptDataUrl(fileUrl);
+            setSelectedReceiptFile({ ...file, dataUrl: fileUrl });
+            setIsLoadingReceipt(false);
+            return;
+          } else {
+            throw new Error('File not found on server');
+          }
+        } catch (fetchError) {
+          console.error('File not found on server:', fetchError);
+          setReceiptError('File not found on server. It may have been deleted.');
+          setIsLoadingReceipt(false);
+          return;
+        }
+      }
+
+      // Case 3: File has a filename (server file reference)
+      if (file && file.filename) {
+        const fileUrl = `/api/receipts/file/${file.filename}`;
+        try {
+          const response = await fetch(fileUrl, { method: 'HEAD' });
+          if (response.ok) {
+            setReceiptDataUrl(fileUrl);
+            setSelectedReceiptFile({ ...file, dataUrl: fileUrl });
+            setIsLoadingReceipt(false);
+            return;
+          }
+        } catch {
+          setReceiptError('File not found on server.');
+          setIsLoadingReceipt(false);
+          return;
+        }
+      }
+
+      // Case 4: File has dataUrl already (base64)
+      if (file && file.dataUrl) {
+        setReceiptDataUrl(file.dataUrl);
+        setSelectedReceiptFile(file);
+        setIsLoadingReceipt(false);
+        return;
+      }
+
+      // Case 5: File has a file object with actual data
       if (file && file.file) {
         if (isFileLike(file.file)) {
           const dataUrl = await readFileAsDataURL(file.file);
           setReceiptDataUrl(dataUrl);
           setSelectedReceiptFile({ ...file, dataUrl: dataUrl });
+          setIsLoadingReceipt(false);
           return;
         }
-        // If file.file is a string (URL)
         if (typeof file.file === 'string') {
           if (file.file.startsWith('data:')) {
             setReceiptDataUrl(file.file);
             setSelectedReceiptFile({ ...file, dataUrl: file.file });
+            setIsLoadingReceipt(false);
             return;
           }
           // Try to fetch external URL
@@ -269,71 +340,80 @@ export default function FinanceModule({
             const dataUrl = await readFileAsDataURL(blob);
             setReceiptDataUrl(dataUrl);
             setSelectedReceiptFile({ ...file, dataUrl: dataUrl });
+            setIsLoadingReceipt(false);
             return;
           } catch {
-            // If fetch fails, just show file info
             setSelectedReceiptFile(file);
+            setIsLoadingReceipt(false);
             return;
           }
         }
       }
 
-      // Case 3: File is directly a File/Blob object
+      // Case 6: File is directly a File/Blob object
       if (isFileLike(file)) {
         const dataUrl = await readFileAsDataURL(file);
         setReceiptDataUrl(dataUrl);
         setSelectedReceiptFile({ ...file, dataUrl: dataUrl });
+        setIsLoadingReceipt(false);
         return;
       }
 
-      // Case 4: File has a URL string
+      // Case 7: File has a file path string
       if (typeof file === 'string') {
         if (file.startsWith('data:')) {
           setReceiptDataUrl(file);
           setSelectedReceiptFile({ dataUrl: file });
+          setIsLoadingReceipt(false);
           return;
         }
         if (file.startsWith('http')) {
-          // Try to fetch and convert to dataUrl
-          try {
-            const response = await fetch(file);
-            const blob = await response.blob();
-            const dataUrl = await readFileAsDataURL(blob);
-            setReceiptDataUrl(dataUrl);
-            setSelectedReceiptFile({ dataUrl: dataUrl });
-            return;
-          } catch {
-            // If fetch fails, just open in new window
-            window.open(file, '_blank');
-            return;
-          }
-        }
-        // Assume it's a file path
-        window.open(file, '_blank');
-        return;
-      }
-
-      // Case 5: File has a url property
-      if (file && file.url) {
-        if (file.url.startsWith('data:')) {
-          setReceiptDataUrl(file.url);
-          setSelectedReceiptFile({ ...file, dataUrl: file.url });
+          setReceiptDataUrl(file);
+          setSelectedReceiptFile({ dataUrl: file });
+          setIsLoadingReceipt(false);
           return;
         }
-        window.open(file.url, '_blank');
-        return;
+        // Try as server file
+        const fileUrl = `/api/receipts/file/${file}`;
+        try {
+          const response = await fetch(fileUrl, { method: 'HEAD' });
+          if (response.ok) {
+            setReceiptDataUrl(fileUrl);
+            setSelectedReceiptFile({ dataUrl: fileUrl });
+            setIsLoadingReceipt(false);
+            return;
+          }
+        } catch {
+          // Not found
+        }
       }
 
       // Fallback: Show file info
       setSelectedReceiptFile(file);
+      setReceiptError('Unable to preview this file. Try downloading it instead.');
+      setIsLoadingReceipt(false);
     } catch (error) {
       console.error('Error loading receipt file:', error);
-      showNotification('Error loading receipt file', 'error');
-      setSelectedReceiptFile(file);
+      setReceiptError('Error loading file. Please try again.');
+      setIsLoadingReceipt(false);
     }
   };
 
-  // FIXED: Download Receipt with actual data (NO instanceof)
+  // Navigate through multiple receipt files
+  const navigateReceipt = (direction: 'prev' | 'next') => {
+    if (allReceiptFiles.length === 0) return;
+
+    let newIndex = selectedReceiptIndex;
+    if (direction === 'next') {
+      newIndex = (newIndex + 1) % allReceiptFiles.length;
+    } else {
+      newIndex = (newIndex - 1 + allReceiptFiles.length) % allReceiptFiles.length;
+    }
+    setSelectedReceiptIndex(newIndex);
+    loadReceiptFile(allReceiptFiles[newIndex]);
+  };
+
+  // Download Receipt
   const handleDownloadReceipt = (file: any) => {
     console.log('Downloading receipt file:', file);
 
@@ -350,8 +430,32 @@ export default function FinanceModule({
     };
 
     try {
+      // If file has a server URL or storedName, open in new tab
+      if (file?.url) {
+        window.open(file.url, '_blank');
+        return;
+      }
+
+      if (file?.storedName) {
+        const fileUrl = `/api/receipts/file/${file.storedName}`;
+        window.open(fileUrl, '_blank');
+        return;
+      }
+
+      if (file?.filename) {
+        const fileUrl = `/api/receipts/file/${file.filename}`;
+        window.open(fileUrl, '_blank');
+        return;
+      }
+
       // If we have a dataUrl, use it
       if (file?.dataUrl) {
+        // If it's a server URL, open in new tab
+        if (file.dataUrl.startsWith('/api/') || file.dataUrl.startsWith('http')) {
+          window.open(file.dataUrl, '_blank');
+          return;
+        }
+
         fetch(file.dataUrl)
           .then(res => res.blob())
           .then(blob => {
@@ -360,8 +464,13 @@ export default function FinanceModule({
             triggerDownload(blob, filename);
           })
           .catch(() => {
-            // If dataUrl is already a blob URL
             if (file.dataUrl.startsWith('blob:')) {
+              fetch(file.dataUrl)
+                .then(res => res.blob())
+                .then(blob => triggerDownload(blob, file.name || 'receipt.png'))
+                .catch(() => showNotification('Error downloading file', 'error'));
+            } else if (file.dataUrl.startsWith('data:')) {
+              // Convert data URL to blob
               fetch(file.dataUrl)
                 .then(res => res.blob())
                 .then(blob => triggerDownload(blob, file.name || 'receipt.png'))
@@ -370,32 +479,6 @@ export default function FinanceModule({
               showNotification('Error downloading file', 'error');
             }
           });
-        return;
-      }
-
-      // If we have a file object with a file property
-      if (file?.file) {
-        if (isFileLike(file.file)) {
-          triggerDownload(file.file, file.name || 'receipt');
-          return;
-        }
-        // If file.file is a string URL
-        if (typeof file.file === 'string') {
-          if (file.file.startsWith('data:')) {
-            fetch(file.file)
-              .then(res => res.blob())
-              .then(blob => triggerDownload(blob, file.name || 'receipt.png'))
-              .catch(() => window.open(file.file, '_blank'));
-            return;
-          }
-          window.open(file.file, '_blank');
-          return;
-        }
-      }
-
-      // If file is directly a File/Blob object
-      if (isFileLike(file)) {
-        triggerDownload(file, file.name || 'receipt');
         return;
       }
 
@@ -412,12 +495,6 @@ export default function FinanceModule({
         return;
       }
 
-      // If file has a url property
-      if (file && file.url) {
-        window.open(file.url, '_blank');
-        return;
-      }
-
       // Fallback: Generate text receipt
       const receiptData = {
         studentName: selectedPayment?.candidateName || selectedPayment?.studentName || selectedPayment?.name || 'Student',
@@ -427,18 +504,18 @@ export default function FinanceModule({
       };
 
       const content = `
-        ========================================
-        PAYMENT RECEIPT
-        ========================================
+========================================
+PAYMENT RECEIPT
+========================================
 
-        Student: ${receiptData.studentName}
-        School: ${receiptData.schoolName}
-        Amount: ${receiptData.amount} Birr
-        Date: ${receiptData.date}
+Student: ${receiptData.studentName}
+School: ${receiptData.schoolName}
+Amount: ${receiptData.amount} Birr
+Date: ${receiptData.date}
 
-        ========================================
-        Generated receipt for reference.
-        ========================================
+========================================
+Generated receipt for reference.
+========================================
       `;
 
       const blob = new Blob([content], { type: 'text/plain' });
@@ -449,7 +526,7 @@ export default function FinanceModule({
     }
   };
 
-  // FIXED: Print Receipt
+  // Print Receipt
   const handlePrintReceipt = () => {
     const printContent = document.getElementById('receipt-content');
     if (printContent) {
@@ -468,6 +545,8 @@ export default function FinanceModule({
                 .total { font-size: 20px; font-weight: bold; color: #059669; margin-top: 20px; }
                 .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
                 img { max-width: 100%; }
+                .file-list { margin: 20px 0; }
+                .file-item { padding: 8px; background: #f8fafc; border-radius: 8px; margin: 4px 0; }
               </style>
             </head>
             <body>
@@ -484,6 +563,14 @@ export default function FinanceModule({
                   <div class="row"><span>Status:</span><span>${selectedPayment?.status || 'Pending'}</span></div>
                 </div>
                 ${receiptDataUrl ? `<div style="margin: 20px 0;"><img src="${receiptDataUrl}" alt="Receipt" style="max-width:100%;"/></div>` : ''}
+                ${allReceiptFiles.length > 0 ? `
+                  <div class="file-list">
+                    <h4>Attached Files (${allReceiptFiles.length})</h4>
+                    ${allReceiptFiles.map((f: any) => `
+                      <div class="file-item">${f.originalName || f.name || 'Receipt file'}</div>
+                    `).join('')}
+                  </div>
+                ` : ''}
                 <div class="total">Total: ${selectedPayment?.feeAmount || selectedPayment?.amount || 0} Birr</div>
                 <div class="footer">Printed on ${new Date().toLocaleString()}</div>
               </div>
@@ -498,11 +585,7 @@ export default function FinanceModule({
     }
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
-
-  // ============ Payment Approval with Student Enrollment ============
+  // ============ PAYMENT APPROVAL ============
 
   const handleApprovePayment = (payment: any) => {
     setModalType('approvePayment');
@@ -1068,13 +1151,13 @@ export default function FinanceModule({
                         <div className="flex gap-1 flex-wrap">
                           <button
                             onClick={() => handleApprovePayment(payment)}
-                            className="px-2 py-1 bg-emerald-500 text-white rounded-lg text-xs font-semibold hover:bg-emerald-600 transition-colors cursor-pointer flex items-center gap-1"
+                            className="px-2 py-1 bg-emerald-500 text-white rounded-lg text-xs font-semibold hover:bg-emerald-600 transition-colors flex items-center gap-1 cursor-pointer"
                           >
                             <CheckCircle className="h-3 w-3" /> Approve
                           </button>
                           <button
                             onClick={() => handleRejectPayment(payment)}
-                            className="px-2 py-1 bg-red-500 text-white rounded-lg text-xs font-semibold hover:bg-red-600 transition-colors cursor-pointer flex items-center gap-1"
+                            className="px-2 py-1 bg-red-500 text-white rounded-lg text-xs font-semibold hover:bg-red-600 transition-colors flex items-center gap-1 cursor-pointer"
                           >
                             <X className="h-3 w-3" /> Reject
                           </button>
@@ -1230,7 +1313,9 @@ export default function FinanceModule({
         </div>
       )}
 
-      {/* RECEIPT VIEW MODAL - FIXED with actual image display */}
+      {/* ============================================================ */}
+      {/* RECEIPT VIEW MODAL - COMPLETE WITH SERVER FILE HANDLING */}
+      {/* ============================================================ */}
       {showReceiptModal && selectedPayment && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className={`bg-white rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto transition-all ${isFullscreen ? 'max-w-7xl' : 'max-w-4xl'}`}>
@@ -1240,6 +1325,28 @@ export default function FinanceModule({
                 Payment Receipt
               </h3>
               <div className="flex items-center gap-2">
+                {/* Navigation buttons for multiple files */}
+                {allReceiptFiles.length > 1 && (
+                  <div className="flex items-center gap-1 mr-2">
+                    <button
+                      onClick={() => navigateReceipt('prev')}
+                      className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-slate-600 cursor-pointer"
+                      title="Previous file"
+                    >
+                      <ChevronDown className="h-4 w-4 rotate-90" />
+                    </button>
+                    <span className="text-xs text-slate-500">
+                      {selectedReceiptIndex + 1}/{allReceiptFiles.length}
+                    </span>
+                    <button
+                      onClick={() => navigateReceipt('next')}
+                      className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-slate-600 cursor-pointer"
+                      title="Next file"
+                    >
+                      <ChevronDown className="h-4 w-4 -rotate-90" />
+                    </button>
+                  </div>
+                )}
                 <button
                   onClick={() => setIsFullscreen(!isFullscreen)}
                   className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
@@ -1259,7 +1366,9 @@ export default function FinanceModule({
                     setShowReceiptModal(false);
                     setSelectedReceiptFile(null);
                     setReceiptDataUrl(null);
+                    setReceiptError(null);
                     setIsFullscreen(false);
+                    setAllReceiptFiles([]);
                   }}
                   className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
                 >
@@ -1269,6 +1378,7 @@ export default function FinanceModule({
             </div>
 
             <div id="receipt-content" className="space-y-4">
+              {/* Payment Details */}
               <div className="bg-slate-50 p-4 rounded-xl grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="flex justify-between border-b border-slate-200 pb-2 md:border-b-0 md:pb-0">
                   <span className="text-slate-500">Student:</span>
@@ -1300,104 +1410,144 @@ export default function FinanceModule({
                 </div>
               </div>
 
-              {/* FIXED: Receipt Files with Actual Images */}
+              {/* Receipt Files Section */}
               <div>
                 <h4 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
                   <Paperclip className="h-4 w-4" /> Uploaded Receipts
                   <span className="text-sm text-slate-400 font-normal ml-2">
-                    ({selectedPayment.receiptFiles?.length || 0} files)
+                    ({allReceiptFiles.length} files)
                   </span>
                 </h4>
 
+                {/* Loading State */}
+                {isLoadingReceipt && (
+                  <div className="flex items-center justify-center py-8 bg-slate-50 rounded-xl">
+                    <Loader2 className="h-8 w-8 text-indigo-500 animate-spin mr-3" />
+                    <span className="text-slate-500">Loading receipt...</span>
+                  </div>
+                )}
+
+                {/* Error State */}
+                {receiptError && !isLoadingReceipt && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+                    <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+                    <p className="text-red-600">{receiptError}</p>
+                    <button
+                      onClick={() => {
+                        if (allReceiptFiles.length > 0) {
+                          loadReceiptFile(allReceiptFiles[selectedReceiptIndex]);
+                        }
+                      }}
+                      className="mt-2 px-4 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-semibold hover:bg-red-200 transition-colors cursor-pointer"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+
                 {/* Display the actual receipt image */}
-                {receiptDataUrl && (
+                {receiptDataUrl && !isLoadingReceipt && !receiptError && (
                   <div className="mb-4 p-4 bg-slate-50 rounded-xl border-2 border-indigo-200">
                     <div className="flex justify-between items-center mb-3">
-                      <span className="font-medium text-slate-700">Receipt Image</span>
-                      <button
-                        onClick={() => {
-                          const link = document.createElement('a');
-                          link.href = receiptDataUrl;
-                          link.download = 'receipt_image.png';
-                          document.body.appendChild(link);
-                          link.click();
-                          document.body.removeChild(link);
-                        }}
-                        className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition-colors flex items-center gap-1 cursor-pointer"
-                      >
-                        <Download className="h-3.5 w-3.5" /> Download
-                      </button>
+                      <span className="font-medium text-slate-700">
+                        {selectedReceiptFile?.originalName || selectedReceiptFile?.name || 'Receipt Image'}
+                      </span>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            if (selectedReceiptFile) {
+                              handleDownloadReceipt(selectedReceiptFile);
+                            } else if (receiptDataUrl) {
+                              const link = document.createElement('a');
+                              link.href = receiptDataUrl;
+                              link.download = 'receipt_image.png';
+                              document.body.appendChild(link);
+                              link.click();
+                              document.body.removeChild(link);
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Download className="h-3.5 w-3.5" /> Download
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex justify-center bg-white rounded-lg p-2">
-                      <img
-                        src={receiptDataUrl}
-                        alt="Payment Receipt"
-                        className="max-w-full max-h-[400px] object-contain rounded-lg"
-                        onError={(e) => {
-                          console.error('Image failed to load');
-                          (e.target as HTMLImageElement).style.display = 'none';
-                          // Show fallback
-                          const parent = (e.target as HTMLImageElement).parentElement;
-                          if (parent) {
-                            parent.innerHTML = `
-                              <div class="text-center py-8">
-                                <FileText className="h-12 w-12 text-slate-400 mx-auto mb-2" />
-                                <p class="text-slate-500">Unable to display image</p>
-                                <button
-                                  onclick="window.location.reload()"
-                                  class="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm"
-                                >
-                                  Try Again
-                                </button>
-                              </div>
-                            `;
-                          }
-                        }}
-                      />
+                    <div className="flex justify-center bg-white rounded-lg p-2 min-h-[200px]">
+                      {receiptDataUrl.startsWith('/api/') || receiptDataUrl.startsWith('http') ? (
+                        <div className="w-full">
+                          {receiptDataUrl.toLowerCase().includes('.pdf') ? (
+                            <embed
+                              src={receiptDataUrl}
+                              type="application/pdf"
+                              className="w-full h-[500px] rounded-lg"
+                            />
+                          ) : (
+                            <img
+                              src={receiptDataUrl}
+                              alt="Payment Receipt"
+                              className="max-w-full max-h-[500px] object-contain rounded-lg mx-auto"
+                              onError={(e) => {
+                                console.error('Image failed to load');
+                                setReceiptError('Failed to load image. Please try downloading the file.');
+                              }}
+                            />
+                          )}
+                        </div>
+                      ) : (
+                        <img
+                          src={receiptDataUrl}
+                          alt="Payment Receipt"
+                          className="max-w-full max-h-[500px] object-contain rounded-lg mx-auto"
+                          onError={(e) => {
+                            console.error('Image failed to load');
+                            setReceiptError('Failed to load image. Please try downloading the file.');
+                          }}
+                        />
+                      )}
                     </div>
                   </div>
                 )}
 
-                {/* List all files */}
-                {selectedPayment.receiptFiles && selectedPayment.receiptFiles.length > 0 ? (
+                {/* File List */}
+                {allReceiptFiles.length > 0 && !isLoadingReceipt && (
                   <div className="space-y-3">
-                    {selectedPayment.receiptFiles.map((file: any, index: number) => {
+                    {allReceiptFiles.map((file: any, index: number) => {
                       const isImage = file.type?.startsWith('image/');
-                      const hasPreview = file.dataUrl || file.file;
+                      const isActive = index === selectedReceiptIndex;
 
                       return (
                         <div
                           key={index}
-                          className={`flex items-center justify-between p-4 rounded-xl border-2 ${getFileColor(file.type)} transition-all hover:shadow-md`}
+                          className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all cursor-pointer ${
+                            isActive
+                              ? 'border-indigo-500 bg-indigo-50'
+                              : `border-slate-200 hover:border-indigo-300 hover:bg-slate-50`
+                          }`}
+                          onClick={() => {
+                            setSelectedReceiptIndex(index);
+                            loadReceiptFile(file);
+                          }}
                         >
                           <div className="flex items-center gap-4 flex-1 min-w-0">
                             <div className="flex-shrink-0">
                               {getFileIcon(file.type)}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-slate-900 truncate">{file.name}</p>
+                              <p className="text-sm font-medium text-slate-900 truncate">
+                                {file.originalName || file.name || `Receipt ${index + 1}`}
+                              </p>
                               <p className="text-xs text-slate-500">
                                 {(file.size / 1024).toFixed(1)} KB • {file.type || 'Unknown type'}
+                                {isActive && ' • Currently viewing'}
                               </p>
                             </div>
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
-                            {isImage && hasPreview && (
-                              <button
-                                onClick={() => {
-                                  if (file.dataUrl) {
-                                    setReceiptDataUrl(file.dataUrl);
-                                  } else if (file.file) {
-                                    loadReceiptFile(file);
-                                  }
-                                }}
-                                className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-colors flex items-center gap-1 cursor-pointer"
-                              >
-                                <Eye className="h-3.5 w-3.5" /> View
-                              </button>
-                            )}
                             <button
-                              onClick={() => handleDownloadReceipt(file)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDownloadReceipt(file);
+                              }}
                               className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition-colors flex items-center gap-1 cursor-pointer"
                             >
                               <Download className="h-3.5 w-3.5" /> Download
@@ -1407,39 +1557,9 @@ export default function FinanceModule({
                       );
                     })}
                   </div>
-                ) : selectedPayment.receiptFile ? (
-                  <div className="space-y-3">
-                    <div className={`flex items-center justify-between p-4 rounded-xl border-2 ${getFileColor(selectedPayment.receiptFile.type)} transition-all hover:shadow-md`}>
-                      <div className="flex items-center gap-4 flex-1 min-w-0">
-                        <div className="flex-shrink-0">
-                          {getFileIcon(selectedPayment.receiptFile.type)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-900 truncate">{selectedPayment.receiptFile.name}</p>
-                          <p className="text-xs text-slate-500">
-                            {(selectedPayment.receiptFile.size / 1024).toFixed(1)} KB • {selectedPayment.receiptFile.type || 'Unknown type'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        {selectedPayment.receiptFile.type?.startsWith('image/') && (
-                          <button
-                            onClick={() => handleViewReceipt(selectedPayment)}
-                            className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-colors flex items-center gap-1 cursor-pointer"
-                          >
-                            <Eye className="h-3.5 w-3.5" /> View
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleDownloadReceipt(selectedPayment.receiptFile)}
-                          className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition-colors flex items-center gap-1 cursor-pointer"
-                        >
-                          <Download className="h-3.5 w-3.5" /> Download
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
+                )}
+
+                {allReceiptFiles.length === 0 && !isLoadingReceipt && !receiptError && (
                   <div className="text-center py-8 bg-slate-50 rounded-xl border-2 border-dashed border-slate-300">
                     <FileText className="h-12 w-12 text-slate-300 mx-auto mb-2" />
                     <p className="text-sm text-slate-500">No receipt files uploaded</p>
@@ -1455,6 +1575,7 @@ export default function FinanceModule({
                     setShowReceiptModal(false);
                     setSelectedReceiptFile(null);
                     setReceiptDataUrl(null);
+                    setReceiptError(null);
                     handleApprovePayment(selectedPayment);
                   }}
                   className="flex-1 min-w-[120px] bg-emerald-600 text-white py-2.5 rounded-xl font-semibold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 cursor-pointer"
@@ -1466,6 +1587,7 @@ export default function FinanceModule({
                     setShowReceiptModal(false);
                     setSelectedReceiptFile(null);
                     setReceiptDataUrl(null);
+                    setReceiptError(null);
                     handleRejectPayment(selectedPayment);
                   }}
                   className="flex-1 min-w-[120px] bg-red-500 text-white py-2.5 rounded-xl font-semibold hover:bg-red-600 transition-colors flex items-center justify-center gap-2 cursor-pointer"
@@ -1477,92 +1599,15 @@ export default function FinanceModule({
                     setShowReceiptModal(false);
                     setSelectedReceiptFile(null);
                     setReceiptDataUrl(null);
+                    setReceiptError(null);
                     setIsFullscreen(false);
+                    setAllReceiptFiles([]);
                   }}
                   className="flex-1 min-w-[120px] bg-slate-200 text-slate-700 py-2.5 rounded-xl font-semibold hover:bg-slate-300 transition-colors cursor-pointer"
                 >
                   Close
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* FILE PREVIEW MODAL - FIXED */}
-      {selectedReceiptFile && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-slate-200">
-              <h4 className="font-semibold text-slate-900 flex items-center gap-2">
-                <Eye className="h-4 w-4 text-indigo-600" />
-                File Preview: {selectedReceiptFile.name || 'Receipt'}
-              </h4>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    if (selectedReceiptFile.dataUrl) {
-                      const link = document.createElement('a');
-                      link.href = selectedReceiptFile.dataUrl;
-                      link.download = selectedReceiptFile.name || 'receipt';
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                    } else {
-                      handleDownloadReceipt(selectedReceiptFile);
-                    }
-                  }}
-                  className="text-emerald-600 hover:text-emerald-700 p-1.5 rounded-lg hover:bg-emerald-50 transition-colors cursor-pointer"
-                  title="Download File"
-                >
-                  <Download className="h-5 w-5" />
-                </button>
-                <button
-                  onClick={() => setSelectedReceiptFile(null)}
-                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-            <div className="p-6 overflow-y-auto max-h-[70vh]">
-              {selectedReceiptFile.dataUrl ? (
-                <div className="flex items-center justify-center bg-slate-100 rounded-xl p-4 min-h-[300px]">
-                  {selectedReceiptFile.type?.startsWith('image/') ? (
-                    <img
-                      src={selectedReceiptFile.dataUrl}
-                      alt={selectedReceiptFile.name || 'Receipt'}
-                      className="max-w-full max-h-[500px] object-contain rounded-lg"
-                    />
-                  ) : selectedReceiptFile.type === 'application/pdf' ? (
-                    <embed
-                      src={selectedReceiptFile.dataUrl}
-                      type="application/pdf"
-                      className="w-full h-[500px] rounded-lg"
-                    />
-                  ) : (
-                    <div className="text-center">
-                      <FileText className="h-16 w-16 text-slate-400 mx-auto mb-4" />
-                      <p className="text-slate-500">{selectedReceiptFile.name || 'File'}</p>
-                      <p className="text-sm text-slate-400">Click Download to view</p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex items-center justify-center bg-slate-100 rounded-xl p-4 min-h-[300px]">
-                  <div className="text-center">
-                    <FileText className="h-16 w-16 text-slate-400 mx-auto mb-4" />
-                    <p className="text-slate-500 mb-2">{selectedReceiptFile.name || 'File'}</p>
-                    <p className="text-sm text-slate-400">{(selectedReceiptFile.size / 1024).toFixed(1)} KB</p>
-                    <button
-                      onClick={() => handleDownloadReceipt(selectedReceiptFile)}
-                      className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors flex items-center gap-2 mx-auto cursor-pointer"
-                    >
-                      <Download className="h-4 w-4" /> Download File
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -1630,7 +1675,7 @@ export default function FinanceModule({
               <div className="flex gap-3">
                 <button
                   onClick={handleConfirmApproval}
-                  className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-semibold hover:bg-emerald-700 transition-colors cursor-pointer flex items-center justify-center gap-2"
+                  className="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-semibold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <CheckCircle className="h-4 w-4" /> Approve
                 </button>

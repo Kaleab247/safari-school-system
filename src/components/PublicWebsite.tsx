@@ -1,4 +1,4 @@
-// PublicWebsite.tsx - Complete Updated Version with Fee Amount Display
+// PublicWebsite.tsx - Complete Updated Version with Server File Upload
 
 import React, { useState, useRef, useEffect } from 'react';
 import {
@@ -28,7 +28,8 @@ import {
   File,
   Image,
   Paperclip,
-  Building2
+  Building2,
+  Loader2
 } from 'lucide-react';
 
 interface PublicWebsiteProps {
@@ -61,9 +62,12 @@ export default function PublicWebsite({
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [admissionSuccess, setAdmissionSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [feeStructures, setFeeStructures] = useState<any[]>([]);
   const [selectedGradeFee, setSelectedGradeFee] = useState(0);
+  const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
 
   const [admissionForm, setAdmissionForm] = useState<any>({
     candidateName: '',
@@ -98,7 +102,6 @@ export default function PublicWebsite({
 
   const calculateFee = () => {
     try {
-      // Find fee structure for the selected grade and school
       const fee = feeStructures.find((f: any) => {
         const matchesGrade = f.grade === admissionForm.gradeApplied;
         const matchesSchool = !admissionForm.schoolId || f.schoolId === admissionForm.schoolId || !f.schoolId;
@@ -108,7 +111,6 @@ export default function PublicWebsite({
       const amount = fee ? fee.totalAmount : 0;
       setSelectedGradeFee(amount);
 
-      // Update the form with the fee amount
       setAdmissionForm((prev: any) => ({
         ...prev,
         feeAmount: amount
@@ -119,7 +121,43 @@ export default function PublicWebsite({
     }
   };
 
-  // Handle file upload with proper validation
+  // ============ FILE UPLOAD TO SERVER ============
+  const uploadReceiptsToServer = async (files: File[]): Promise<any[]> => {
+    const formData = new FormData();
+    files.forEach(file => {
+      formData.append('receipts', file);
+    });
+
+    try {
+      setIsUploading(true);
+      setUploadProgress(0);
+
+      const response = await fetch('/api/receipts/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Upload failed');
+      }
+
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || 'Upload failed');
+      }
+
+      setUploadProgress(100);
+      return result.files || [];
+    } catch (error) {
+      console.error('Upload error:', error);
+      throw error;
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // ============ FILE UPLOAD HANDLER ============
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const files = Array.from(e.target.files);
@@ -145,26 +183,86 @@ export default function PublicWebsite({
 
       const fileObjects = validTypes.map(file => ({
         name: file.name,
+        originalName: file.name,
         size: file.size,
         type: file.type,
         file: file,
-        dataUrl: null // Will be populated when viewing
+        dataUrl: null,
+        uploadStatus: 'pending' as 'pending' | 'uploading' | 'uploaded' | 'error'
       }));
 
       setAdmissionForm((prev: any) => ({
         ...prev,
         receiptFiles: [...(prev.receiptFiles || []), ...fileObjects]
       }));
+
+      // Auto-upload files to server
+      if (validTypes.length > 0) {
+        uploadFilesToServer(validTypes);
+      }
     }
   };
 
+  // ============ UPLOAD FILES TO SERVER ============
+  const uploadFilesToServer = async (files: File[]) => {
+    try {
+      setIsUploading(true);
+      const uploaded = await uploadReceiptsToServer(files);
+
+      // Update receipt files with server response
+      setAdmissionForm((prev: any) => ({
+        ...prev,
+        receiptFiles: prev.receiptFiles.map((f: any) => {
+          const uploadedFile = uploaded.find((u: any) =>
+            u.originalName === f.originalName || u.originalName === f.name
+          );
+          if (uploadedFile) {
+            return {
+              ...f,
+              storedName: uploadedFile.storedName,
+              url: uploadedFile.url,
+              uploadStatus: 'uploaded' as const
+            };
+          }
+          return { ...f, uploadStatus: 'error' as const };
+        })
+      }));
+
+      setUploadedFiles([...uploaded]);
+      showNotification('Files uploaded successfully!', 'success');
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert('Failed to upload files. Please try again.');
+      setAdmissionForm((prev: any) => ({
+        ...prev,
+        receiptFiles: prev.receiptFiles.map((f: any) => ({
+          ...f,
+          uploadStatus: 'error' as const
+        }))
+      }));
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // ============ REMOVE FILE ============
   const removeFile = (index: number) => {
+    const fileToRemove = admissionForm.receiptFiles[index];
+
+    // If file was uploaded to server, delete it
+    if (fileToRemove && fileToRemove.storedName) {
+      fetch(`/api/receipts/file/${fileToRemove.storedName}`, {
+        method: 'DELETE'
+      }).catch(err => console.error('Error deleting file:', err));
+    }
+
     setAdmissionForm((prev: any) => ({
       ...prev,
       receiptFiles: prev.receiptFiles.filter((_: any, i: number) => i !== index)
     }));
   };
 
+  // ============ SUBMIT ADMISSION ============
   const submitAdmission = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -190,50 +288,70 @@ export default function PublicWebsite({
       setIsSubmitting(false);
       return;
     }
-    if (admissionForm.receiptFiles.length === 0) {
-      alert('Please upload at least one payment receipt!');
+
+    // Check if files are uploaded
+    const hasUploadedFiles = admissionForm.receiptFiles.some((f: any) =>
+      f.uploadStatus === 'uploaded' || f.storedName || f.url
+    );
+
+    if (admissionForm.receiptFiles.length === 0 || !hasUploadedFiles) {
+      alert('Please upload at least one payment receipt and wait for it to be uploaded!');
       setIsSubmitting(false);
       return;
     }
 
-    // Get fee amount for the selected grade and school
-    let feeAmount = 0;
     try {
-      const fee = feeStructures.find((f: any) => {
-        const matchesGrade = f.grade === admissionForm.gradeApplied;
-        const matchesSchool = f.schoolId === admissionForm.schoolId || !f.schoolId;
-        return matchesGrade && matchesSchool;
-      });
-      feeAmount = fee ? fee.totalAmount : 0;
-    } catch (error) {
-      console.error('Error getting fee amount:', error);
-    }
+      // Get fee amount
+      let feeAmount = 0;
+      try {
+        const fee = feeStructures.find((f: any) => {
+          const matchesGrade = f.grade === admissionForm.gradeApplied;
+          const matchesSchool = f.schoolId === admissionForm.schoolId || !f.schoolId;
+          return matchesGrade && matchesSchool;
+        });
+        feeAmount = fee ? fee.totalAmount : 0;
+      } catch (error) {
+        console.error('Error getting fee amount:', error);
+      }
 
-    // Find school name
-    const selectedSchool = schools.find((s: any) => s.id === admissionForm.schoolId);
-    const schoolName = selectedSchool ? selectedSchool.name : '';
+      const selectedSchool = schools.find((s: any) => s.id === admissionForm.schoolId);
+      const schoolName = selectedSchool ? selectedSchool.name : '';
 
-    const newAdmission = {
-      id: `ADM-${Date.now().toString().slice(-6)}`,
-      candidateName: admissionForm.candidateName.trim(),
-      parentName: admissionForm.parentName.trim(),
-      email: admissionForm.email.trim(),
-      phone: admissionForm.phone || '',
-      gradeApplied: admissionForm.gradeApplied,
-      schoolId: admissionForm.schoolId || '',
-      schoolName: schoolName,
-      receiptFiles: admissionForm.receiptFiles,
-      hasReceipt: admissionForm.receiptFiles.length > 0,
-      status: 'PaymentPending',
-      feeAmount: feeAmount,
-      submittedDate: new Date().toLocaleDateString(),
-      notes: admissionForm.notes || '',
-      approvedByFinance: false
-    };
+      // Prepare file data for storage
+      const fileData = admissionForm.receiptFiles
+        .filter((f: any) => f.uploadStatus === 'uploaded' || f.storedName)
+        .map((f: any) => ({
+          originalName: f.originalName || f.name,
+          storedName: f.storedName,
+          url: f.url,
+          size: f.size,
+          type: f.type,
+          uploadedAt: new Date().toISOString()
+        }));
 
-    try {
+      const newAdmission = {
+        id: `ADM-${Date.now().toString().slice(-6)}`,
+        candidateName: admissionForm.candidateName.trim(),
+        parentName: admissionForm.parentName.trim(),
+        email: admissionForm.email.trim(),
+        phone: admissionForm.phone || '',
+        gradeApplied: admissionForm.gradeApplied,
+        schoolId: admissionForm.schoolId || '',
+        schoolName: schoolName,
+        receiptFiles: fileData,
+        hasReceipt: fileData.length > 0,
+        status: 'PaymentPending',
+        feeAmount: feeAmount,
+        submittedDate: new Date().toLocaleDateString(),
+        notes: admissionForm.notes || '',
+        approvedByFinance: false
+      };
+
+      // Save admission
       onAddAdmission(newAdmission);
       setAdmissionSuccess(true);
+
+      // Reset form
       setAdmissionForm({
         candidateName: '',
         parentName: '',
@@ -245,6 +363,7 @@ export default function PublicWebsite({
         notes: ''
       });
       setSelectedGradeFee(0);
+      setUploadedFiles([]);
 
       setTimeout(() => {
         setAdmissionSuccess(false);
@@ -258,8 +377,38 @@ export default function PublicWebsite({
     }
   };
 
+  // ============ SHOW NOTIFICATION ============
+  const showNotification = (message: string, type: 'success' | 'error' | 'info') => {
+    console.log(`[${type}] ${message}`);
+    // You can implement a proper notification system here
+  };
+
   // Get active schools
   const activeSchools = schools.filter((s: any) => s.status === 'active');
+
+  // ============ GET FILE ICON ============
+  const getFileIcon = (fileType: string) => {
+    if (fileType?.startsWith('image/')) {
+      return <Image className="h-5 w-5 text-indigo-500" />;
+    }
+    if (fileType === 'application/pdf') {
+      return <FileText className="h-5 w-5 text-red-500" />;
+    }
+    return <File className="h-5 w-5 text-indigo-500" />;
+  };
+
+  const getUploadStatusBadge = (status: string) => {
+    switch(status) {
+      case 'uploaded':
+        return <span className="text-xs text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">✓ Uploaded</span>;
+      case 'uploading':
+        return <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full animate-pulse">⏳ Uploading...</span>;
+      case 'error':
+        return <span className="text-xs text-red-600 bg-red-100 px-2 py-0.5 rounded-full">✗ Error</span>;
+      default:
+        return <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Pending</span>;
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
@@ -458,7 +607,7 @@ export default function PublicWebsite({
         </div>
       )}
 
-      {/* Admissions Section - Enhanced */}
+      {/* Admissions Section */}
       {activeTab === 'admissions' && (
         <div className="max-w-6xl mx-auto px-4 py-16">
           <h2 className="text-3xl font-bold mb-8 text-slate-900">Admissions</h2>
@@ -517,7 +666,9 @@ export default function PublicWebsite({
         </div>
       )}
 
-      {/* Admission Modal - Fixed with Fee Display */}
+      {/* ============================================================ */}
+      {/* ADMISSION MODAL - WITH SERVER FILE UPLOAD */}
+      {/* ============================================================ */}
       {showAdmissionModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-3xl p-8 max-w-lg w-full max-h-[90vh] overflow-y-auto">
@@ -607,7 +758,6 @@ export default function PublicWebsite({
                     value={admissionForm.gradeApplied}
                     onChange={(e) => {
                       setAdmissionForm({...admissionForm, gradeApplied: e.target.value});
-                      // Fee will be recalculated via useEffect
                     }}
                   >
                     {GRADE_LEVELS.map(g => (
@@ -628,7 +778,6 @@ export default function PublicWebsite({
                       value={admissionForm.schoolId}
                       onChange={(e) => {
                         setAdmissionForm({...admissionForm, schoolId: e.target.value});
-                        // Fee will be recalculated via useEffect
                       }}
                     >
                       <option value="">Select a school...</option>
@@ -656,14 +805,20 @@ export default function PublicWebsite({
                   </div>
                 )}
 
+                {/* ============================================================ */}
+                {/* FILE UPLOAD SECTION WITH SERVER STORAGE */}
+                {/* ============================================================ */}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
                     Upload Payment Receipt *
                     <span className="text-xs text-slate-400 ml-2">(JPEG, PNG, PDF - Max 5MB each)</span>
                   </label>
+
                   <div
-                    className="border-2 border-dashed border-slate-300 rounded-xl p-4 text-center hover:border-indigo-400 transition-colors cursor-pointer"
-                    onClick={() => fileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-xl p-4 text-center transition-colors cursor-pointer ${
+                      isUploading ? 'border-blue-400 bg-blue-50' : 'border-slate-300 hover:border-indigo-400'
+                    }`}
+                    onClick={() => !isUploading && fileInputRef.current?.click()}
                   >
                     <input
                       type="file"
@@ -672,36 +827,59 @@ export default function PublicWebsite({
                       onChange={handleFileUpload}
                       accept=".jpg,.jpeg,.png,.pdf"
                       className="hidden"
+                      disabled={isUploading}
                     />
-                    <Upload className="h-8 w-8 text-indigo-400 mx-auto mb-2" />
-                    <p className="text-sm text-slate-600">Click or drag to upload receipt</p>
-                    <p className="text-xs text-slate-400 mt-1">Supported: JPEG, PNG, PDF</p>
+
+                    {isUploading ? (
+                      <div className="py-4">
+                        <Loader2 className="h-8 w-8 text-blue-500 animate-spin mx-auto mb-2" />
+                        <p className="text-sm text-blue-600">Uploading files to server...</p>
+                        <div className="w-full bg-blue-200 rounded-full h-2 mt-2 max-w-xs mx-auto">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${uploadProgress}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="h-8 w-8 text-indigo-400 mx-auto mb-2" />
+                        <p className="text-sm text-slate-600">Click or drag to upload receipt</p>
+                        <p className="text-xs text-slate-400 mt-1">Supported: JPEG, PNG, PDF (Max 5MB each)</p>
+                      </>
+                    )}
                   </div>
 
+                  {/* File List with Status */}
                   {admissionForm.receiptFiles.length > 0 && (
                     <div className="mt-3 space-y-2">
                       {admissionForm.receiptFiles.map((f: any, i: number) => (
-                        <div key={i} className="flex items-center justify-between bg-slate-50 p-2 rounded-lg text-sm">
-                          <div className="flex items-center gap-2">
-                            {f.type?.startsWith('image/') ? (
-                              <Image className="h-4 w-4 text-indigo-500" />
-                            ) : (
-                              <FileText className="h-4 w-4 text-indigo-500" />
-                            )}
-                            <span className="truncate max-w-[150px]">{f.name}</span>
-                            <span className="text-xs text-slate-400">
+                        <div key={i} className="flex items-center justify-between bg-slate-50 p-2 rounded-lg text-sm border border-slate-200">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            {getFileIcon(f.type)}
+                            <span className="truncate text-slate-700">{f.originalName || f.name}</span>
+                            <span className="text-xs text-slate-400 shrink-0">
                               ({(f.size / 1024).toFixed(1)} KB)
                             </span>
+                            {getUploadStatusBadge(f.uploadStatus || 'pending')}
                           </div>
                           <button
                             type="button"
                             onClick={() => removeFile(i)}
-                            className="text-red-500 hover:text-red-700 transition-colors"
+                            className="text-red-500 hover:text-red-700 transition-colors shrink-0 ml-2 p-1 hover:bg-red-50 rounded"
+                            disabled={isUploading}
                           >
                             <X className="h-4 w-4" />
                           </button>
                         </div>
                       ))}
+
+                      {/* Uploaded files summary */}
+                      {uploadedFiles.length > 0 && (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-xs text-emerald-700">
+                          ✓ {uploadedFiles.length} file(s) uploaded to server successfully
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -719,15 +897,21 @@ export default function PublicWebsite({
                   />
                 </div>
 
+                {/* Submit Button */}
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isUploading}
                   className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2"
                 >
                   {isSubmitting ? (
                     <>
-                      <span className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></span>
+                      <Loader2 className="h-4 w-4 animate-spin" />
                       Submitting...
+                    </>
+                  ) : isUploading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Uploading files...
                     </>
                   ) : (
                     <>
