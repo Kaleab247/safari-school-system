@@ -1,4 +1,4 @@
-// StudentModule.tsx - Complete Functional Version
+// StudentModule.tsx - Complete Fixed Version with Proper Password Update
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -135,7 +135,7 @@ export default function StudentModule({
     }
   }, [student]);
 
-  // Handle profile update
+  // FIXED: Handle profile update with proper password change
   const handleOpenProfile = () => {
     if (!student) {
       showNotification('Student profile not found!', 'error');
@@ -155,6 +155,7 @@ export default function StudentModule({
     setShowProfileModal(true);
   };
 
+  // FIXED: Update profile with proper password change
   const handleUpdateProfile = () => {
     if (!student) {
       showNotification('Student profile not found!', 'error');
@@ -163,44 +164,68 @@ export default function StudentModule({
 
     setIsUpdating(true);
 
-    // Validate passwords if changing
+    // Get the current registered user
+    const user = registeredUsers.find((u: any) =>
+      u.email?.toLowerCase() === student.email?.toLowerCase() ||
+      u.associatedId === student.id
+    );
+
+    // Handle password change
     if (profileData.newPassword || profileData.confirmPassword) {
+      // Validate passwords match
       if (profileData.newPassword !== profileData.confirmPassword) {
         showNotification('New passwords do not match!', 'error');
         setIsUpdating(false);
         return;
       }
+
+      // Validate password length
       if (profileData.newPassword.length < 6) {
         showNotification('Password must be at least 6 characters!', 'error');
         setIsUpdating(false);
         return;
       }
+
+      // Validate current password is provided
       if (!profileData.currentPassword) {
         showNotification('Please enter your current password to change it!', 'error');
         setIsUpdating(false);
         return;
       }
 
-      // Verify current password
-      const user = registeredUsers.find((u: any) => u.email === student?.email);
+      // Verify current password matches
       if (user && user.password !== profileData.currentPassword) {
         showNotification('Current password is incorrect!', 'error');
         setIsUpdating(false);
         return;
       }
 
-      // Update password in registered users
+      // FIXED: Update password in registered users
       if (setRegisteredUsers && user) {
-        const updatedUsers = registeredUsers.map((u: any) =>
-          u.email === student?.email ? { ...u, password: profileData.newPassword } : u
-        );
+        const updatedUsers = registeredUsers.map((u: any) => {
+          if (u.id === user.id) {
+            return {
+              ...u,
+              password: profileData.newPassword
+            };
+          }
+          return u;
+        });
+
+        // Update state
         setRegisteredUsers(updatedUsers);
-        // Save to localStorage directly
+
+        // FIXED: Save to localStorage directly as backup
         try {
           localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
+          console.log('✅ Password updated in localStorage');
         } catch (e) {
-          console.error('Error saving users:', e);
+          console.error('Error saving users to localStorage:', e);
         }
+      } else {
+        showNotification('User account not found. Please contact support.', 'error');
+        setIsUpdating(false);
+        return;
       }
     }
 
@@ -215,6 +240,7 @@ export default function StudentModule({
       updatedAt: new Date().toISOString()
     };
 
+    // Update via callback if provided
     if (onUpdateStudent) {
       onUpdateStudent(updatedStudent);
     }
@@ -226,8 +252,16 @@ export default function StudentModule({
         s.id === student.id ? updatedStudent : s
       );
       localStorage.setItem('safari_students', JSON.stringify(updatedStudents));
+
+      // Also update in the students array if setStudents is available
+      // This is handled by the parent component via onUpdateStudent
+
+      console.log('✅ Student profile updated in localStorage');
     } catch (e) {
       console.error('Error saving student:', e);
+      showNotification('Error updating profile. Please try again.', 'error');
+      setIsUpdating(false);
+      return;
     }
 
     showNotification('Profile updated successfully!', 'success');
@@ -1041,7 +1075,7 @@ export default function StudentModule({
         </div>
       )}
 
-      {/* Profile Management Modal */}
+      {/* Profile Management Modal - FIXED with proper password update */}
       {showProfileModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
