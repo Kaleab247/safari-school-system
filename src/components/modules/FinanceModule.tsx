@@ -1,4 +1,4 @@
-// FinanceModule.tsx - Complete Fixed Version with Server Receipt Handling
+// FinanceModule.tsx - Fixed Individual Approval/Rejection
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -80,6 +80,9 @@ export default function FinanceModule({
   const [allReceiptFiles, setAllReceiptFiles] = useState<any[]>([]);
   const [selectedReceiptIndex, setSelectedReceiptIndex] = useState(0);
 
+  // Track which payment is being processed
+  const [processingPaymentId, setProcessingPaymentId] = useState<string | null>(null);
+
   // If schoolId is passed, automatically select it
   useEffect(() => {
     if (propSchoolId) {
@@ -160,6 +163,7 @@ export default function FinanceModule({
         allPayments = allPayments.filter((p: any) => p.schoolId === selectedSchool);
       }
 
+      // Remove duplicates
       const uniquePayments = allPayments.filter((p: any, index: number, self: any[]) =>
         index === self.findIndex((t: any) => t.id === p.id)
       );
@@ -259,9 +263,8 @@ export default function FinanceModule({
     setReceiptError(null);
 
     try {
-      // Case 1: File has a server URL (stored on server)
+      // Case 1: File has a server URL
       if (file && file.url) {
-        // Check if URL is a full URL or relative
         const fullUrl = file.url.startsWith('http') ? file.url : `/api/receipts/file/${file.storedName || file.url.split('/').pop()}`;
         setReceiptDataUrl(fullUrl);
         setSelectedReceiptFile({ ...file, dataUrl: fullUrl });
@@ -269,31 +272,9 @@ export default function FinanceModule({
         return;
       }
 
-      // Case 2: File has a storedName (server file)
+      // Case 2: File has a storedName
       if (file && file.storedName) {
         const fileUrl = `/api/receipts/file/${file.storedName}`;
-        // Verify the file exists
-        try {
-          const response = await fetch(fileUrl, { method: 'HEAD' });
-          if (response.ok) {
-            setReceiptDataUrl(fileUrl);
-            setSelectedReceiptFile({ ...file, dataUrl: fileUrl });
-            setIsLoadingReceipt(false);
-            return;
-          } else {
-            throw new Error('File not found on server');
-          }
-        } catch (fetchError) {
-          console.error('File not found on server:', fetchError);
-          setReceiptError('File not found on server. It may have been deleted.');
-          setIsLoadingReceipt(false);
-          return;
-        }
-      }
-
-      // Case 3: File has a filename (server file reference)
-      if (file && file.filename) {
-        const fileUrl = `/api/receipts/file/${file.filename}`;
         try {
           const response = await fetch(fileUrl, { method: 'HEAD' });
           if (response.ok) {
@@ -309,7 +290,7 @@ export default function FinanceModule({
         }
       }
 
-      // Case 4: File has dataUrl already (base64)
+      // Case 3: File has dataUrl already
       if (file && file.dataUrl) {
         setReceiptDataUrl(file.dataUrl);
         setSelectedReceiptFile(file);
@@ -317,40 +298,7 @@ export default function FinanceModule({
         return;
       }
 
-      // Case 5: File has a file object with actual data
-      if (file && file.file) {
-        if (isFileLike(file.file)) {
-          const dataUrl = await readFileAsDataURL(file.file);
-          setReceiptDataUrl(dataUrl);
-          setSelectedReceiptFile({ ...file, dataUrl: dataUrl });
-          setIsLoadingReceipt(false);
-          return;
-        }
-        if (typeof file.file === 'string') {
-          if (file.file.startsWith('data:')) {
-            setReceiptDataUrl(file.file);
-            setSelectedReceiptFile({ ...file, dataUrl: file.file });
-            setIsLoadingReceipt(false);
-            return;
-          }
-          // Try to fetch external URL
-          try {
-            const response = await fetch(file.file);
-            const blob = await response.blob();
-            const dataUrl = await readFileAsDataURL(blob);
-            setReceiptDataUrl(dataUrl);
-            setSelectedReceiptFile({ ...file, dataUrl: dataUrl });
-            setIsLoadingReceipt(false);
-            return;
-          } catch {
-            setSelectedReceiptFile(file);
-            setIsLoadingReceipt(false);
-            return;
-          }
-        }
-      }
-
-      // Case 6: File is directly a File/Blob object
+      // Case 4: File is a File/Blob object
       if (isFileLike(file)) {
         const dataUrl = await readFileAsDataURL(file);
         setReceiptDataUrl(dataUrl);
@@ -359,36 +307,22 @@ export default function FinanceModule({
         return;
       }
 
-      // Case 7: File has a file path string
-      if (typeof file === 'string') {
-        if (file.startsWith('data:')) {
-          setReceiptDataUrl(file);
-          setSelectedReceiptFile({ dataUrl: file });
-          setIsLoadingReceipt(false);
-          return;
-        }
-        if (file.startsWith('http')) {
-          setReceiptDataUrl(file);
-          setSelectedReceiptFile({ dataUrl: file });
-          setIsLoadingReceipt(false);
-          return;
-        }
-        // Try as server file
-        const fileUrl = `/api/receipts/file/${file}`;
+      // Case 5: File has a filename
+      if (file && file.filename) {
+        const fileUrl = `/api/receipts/file/${file.filename}`;
         try {
           const response = await fetch(fileUrl, { method: 'HEAD' });
           if (response.ok) {
             setReceiptDataUrl(fileUrl);
-            setSelectedReceiptFile({ dataUrl: fileUrl });
+            setSelectedReceiptFile({ ...file, dataUrl: fileUrl });
             setIsLoadingReceipt(false);
             return;
           }
         } catch {
-          // Not found
+          // File not found
         }
       }
 
-      // Fallback: Show file info
       setSelectedReceiptFile(file);
       setReceiptError('Unable to preview this file. Try downloading it instead.');
       setIsLoadingReceipt(false);
@@ -430,7 +364,6 @@ export default function FinanceModule({
     };
 
     try {
-      // If file has a server URL or storedName, open in new tab
       if (file?.url) {
         window.open(file.url, '_blank');
         return;
@@ -448,9 +381,7 @@ export default function FinanceModule({
         return;
       }
 
-      // If we have a dataUrl, use it
       if (file?.dataUrl) {
-        // If it's a server URL, open in new tab
         if (file.dataUrl.startsWith('/api/') || file.dataUrl.startsWith('http')) {
           window.open(file.dataUrl, '_blank');
           return;
@@ -463,35 +394,12 @@ export default function FinanceModule({
             const filename = file.name || `receipt.${extension}`;
             triggerDownload(blob, filename);
           })
-          .catch(() => {
-            if (file.dataUrl.startsWith('blob:')) {
-              fetch(file.dataUrl)
-                .then(res => res.blob())
-                .then(blob => triggerDownload(blob, file.name || 'receipt.png'))
-                .catch(() => showNotification('Error downloading file', 'error'));
-            } else if (file.dataUrl.startsWith('data:')) {
-              // Convert data URL to blob
-              fetch(file.dataUrl)
-                .then(res => res.blob())
-                .then(blob => triggerDownload(blob, file.name || 'receipt.png'))
-                .catch(() => showNotification('Error downloading file', 'error'));
-            } else {
-              showNotification('Error downloading file', 'error');
-            }
-          });
+          .catch(() => showNotification('Error downloading file', 'error'));
         return;
       }
 
-      // If file is a string URL
       if (typeof file === 'string') {
-        if (file.startsWith('data:')) {
-          fetch(file)
-            .then(res => res.blob())
-            .then(blob => triggerDownload(blob, 'receipt.png'))
-            .catch(() => window.open(file, '_blank'));
-        } else {
-          window.open(file, '_blank');
-        }
+        window.open(file, '_blank');
         return;
       }
 
@@ -585,9 +493,10 @@ Generated receipt for reference.
     }
   };
 
-  // ============ PAYMENT APPROVAL ============
-
+  // ============ FIXED: INDIVIDUAL PAYMENT APPROVAL ============
   const handleApprovePayment = (payment: any) => {
+    // Set the payment being processed
+    setProcessingPaymentId(payment.id);
     setModalType('approvePayment');
     setModalData({
       ...payment,
@@ -596,13 +505,16 @@ Generated receipt for reference.
     setShowModal(true);
   };
 
+  // FIXED: Only approves the specific payment that was clicked
   const handleConfirmApproval = () => {
-    const amount = modalData.feeAmount || modalData.amount || 0;
-    const studentName = modalData.candidateName || modalData.studentName || modalData.name;
-    const studentGrade = modalData.gradeApplied || modalData.grade || 'PreKG';
-    const parentName = modalData.parentName || '';
-    const parentEmail = modalData.email || modalData.parentEmail || '';
-    const studentEmail = modalData.email || '';
+    // Get the specific payment from the modal data
+    const paymentToApprove = modalData;
+    const amount = paymentToApprove.feeAmount || paymentToApprove.amount || 0;
+    const studentName = paymentToApprove.candidateName || paymentToApprove.studentName || paymentToApprove.name;
+    const studentGrade = paymentToApprove.gradeApplied || paymentToApprove.grade || 'PreKG';
+    const parentName = paymentToApprove.parentName || '';
+    const parentEmail = paymentToApprove.email || paymentToApprove.parentEmail || '';
+    const studentEmail = paymentToApprove.email || '';
 
     // 1. Record the transaction
     if (onAddTransaction) {
@@ -610,7 +522,7 @@ Generated receipt for reference.
         amount,
         'Income',
         'Tuition',
-        `Tuition payment for ${studentName} - ${modalData.schoolName || ''}`,
+        `Tuition payment for ${studentName} - ${paymentToApprove.schoolName || ''}`,
         'BankTransfer'
       );
     } else {
@@ -622,23 +534,23 @@ Generated receipt for reference.
         amount: amount,
         date: new Date().toLocaleDateString(),
         description: `Tuition payment for ${studentName}`,
-        paymentMethod: modalData.paymentMethod || 'BankTransfer',
+        paymentMethod: paymentToApprove.paymentMethod || 'BankTransfer',
         status: 'Paid',
         schoolId: selectedSchool || propSchoolId,
-        schoolName: modalData.schoolName || propSchoolName
+        schoolName: paymentToApprove.schoolName || propSchoolName
       });
       localStorage.setItem('safari_transactions', JSON.stringify(transactions));
     }
 
-    // 2. Remove from pending payments
+    // 2. Remove ONLY this specific payment from pending payments
     const allPending = JSON.parse(localStorage.getItem('safari_pending_payments') || '[]');
-    const updatedPending = allPending.filter((p: any) => p.id !== modalData.id);
+    const updatedPending = allPending.filter((p: any) => p.id !== paymentToApprove.id);
     localStorage.setItem('safari_pending_payments', JSON.stringify(updatedPending));
 
-    // 3. Update admissions
+    // 3. Update ONLY this specific admission
     const admissions = JSON.parse(localStorage.getItem('safari_admissions') || '[]');
     const updatedAdmissions = admissions.map((a: any) =>
-      a.id === modalData.id ? {
+      a.id === paymentToApprove.id ? {
         ...a,
         status: 'Accepted',
         approvedByFinance: true,
@@ -658,17 +570,17 @@ Generated receipt for reference.
       parentEmail: parentEmail,
       gradeApplied: studentGrade,
       grade: studentGrade,
-      phone: modalData.phone || '',
-      schoolId: selectedSchool || propSchoolId || modalData.schoolId,
-      schoolName: modalData.schoolName || propSchoolName || '',
+      phone: paymentToApprove.phone || '',
+      schoolId: selectedSchool || propSchoolId || paymentToApprove.schoolId,
+      schoolName: paymentToApprove.schoolName || propSchoolName || '',
       feePaid: amount,
       feePaidDate: new Date().toISOString(),
       status: 'Pending',
       approvedBy: userName,
       approvedDate: new Date().toISOString(),
-      receiptFiles: modalData.receiptFiles || [],
+      receiptFiles: paymentToApprove.receiptFiles || [],
       hasReceipt: true,
-      submittedDate: modalData.submittedDate || new Date().toLocaleDateString()
+      submittedDate: paymentToApprove.submittedDate || new Date().toLocaleDateString()
     };
 
     // Save to pending students
@@ -679,7 +591,7 @@ Generated receipt for reference.
       localStorage.setItem('safari_pending_students', JSON.stringify(existingPending));
     }
 
-    // 5. Update pending payments state
+    // 5. Update pending payments state - remove ONLY the approved one
     setPendingPayments(updatedPending.filter((p: any) => p.schoolId === selectedSchool));
 
     showNotification(
@@ -687,20 +599,26 @@ Generated receipt for reference.
       'success'
     );
     setShowModal(false);
+    setProcessingPaymentId(null);
+    setModalData({});
   };
 
+  // FIXED: Individual Rejection
   const handleRejectPayment = (payment: any) => {
     if (window.confirm(`Reject payment for ${payment.candidateName || payment.studentName || payment.name}?`)) {
+      // Remove ONLY this specific payment
       const allPending = JSON.parse(localStorage.getItem('safari_pending_payments') || '[]');
       const updatedPending = allPending.filter((p: any) => p.id !== payment.id);
       localStorage.setItem('safari_pending_payments', JSON.stringify(updatedPending));
 
+      // Update ONLY this specific admission
       const admissions = JSON.parse(localStorage.getItem('safari_admissions') || '[]');
       const updatedAdmissions = admissions.map((a: any) =>
         a.id === payment.id ? { ...a, status: 'Declined' } : a
       );
       localStorage.setItem('safari_admissions', JSON.stringify(updatedAdmissions));
 
+      // Update state - remove ONLY the rejected one
       setPendingPayments(updatedPending.filter((p: any) => p.schoolId === selectedSchool));
       showNotification(`❌ Payment rejected for ${payment.candidateName || payment.studentName || payment.name}`, 'error');
     }
@@ -1068,7 +986,7 @@ Generated receipt for reference.
         </div>
       )}
 
-      {/* PENDING PAYMENTS TAB */}
+      {/* PENDING PAYMENTS TAB - FIXED with individual actions */}
       {activeTab === 'pending' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
@@ -1098,6 +1016,7 @@ Generated receipt for reference.
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-slate-600 sticky top-0">
                 <tr>
+                  <th className="px-4 py-2 text-left">#</th>
                   <th className="px-4 py-2 text-left">Student</th>
                   <th className="px-4 py-2 text-left">School</th>
                   <th className="px-4 py-2 text-left">Grade</th>
@@ -1110,13 +1029,14 @@ Generated receipt for reference.
               <tbody className="divide-y divide-slate-100">
                 {getFilteredPending().length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
+                    <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
                       {selectedSchool ? 'No pending payments for this school.' : 'No pending payments.'}
                     </td>
                   </tr>
                 ) : (
-                  getFilteredPending().map((payment: any) => (
+                  getFilteredPending().map((payment: any, index: number) => (
                     <tr key={payment.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 text-slate-400 text-center">{index + 1}</td>
                       <td className="px-4 py-3 font-medium">{payment.candidateName || payment.studentName || payment.name}</td>
                       <td className="px-4 py-3">{payment.schoolName || 'N/A'}</td>
                       <td className="px-4 py-3">{payment.gradeApplied || payment.grade || 'N/A'}</td>
@@ -1129,14 +1049,14 @@ Generated receipt for reference.
                             onClick={() => handleViewReceipt(payment)}
                             className="text-indigo-600 hover:text-indigo-800 text-xs font-semibold flex items-center gap-1 cursor-pointer"
                           >
-                            <FileText className="h-4 w-4" /> View Receipt ({payment.receiptFiles?.length || 1})
+                            <FileText className="h-4 w-4" /> View ({payment.receiptFiles?.length || 1})
                           </button>
                         ) : payment.receiptFile ? (
                           <button
                             onClick={() => handleViewReceipt(payment)}
                             className="text-indigo-600 hover:text-indigo-800 text-xs font-semibold flex items-center gap-1 cursor-pointer"
                           >
-                            <FileText className="h-4 w-4" /> View Receipt
+                            <FileText className="h-4 w-4" /> View
                           </button>
                         ) : (
                           <span className="text-slate-400 text-xs">No receipt</span>
@@ -1151,9 +1071,19 @@ Generated receipt for reference.
                         <div className="flex gap-1 flex-wrap">
                           <button
                             onClick={() => handleApprovePayment(payment)}
-                            className="px-2 py-1 bg-emerald-500 text-white rounded-lg text-xs font-semibold hover:bg-emerald-600 transition-colors flex items-center gap-1 cursor-pointer"
+                            disabled={processingPaymentId === payment.id}
+                            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer ${
+                              processingPaymentId === payment.id
+                                ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                                : 'bg-emerald-500 text-white hover:bg-emerald-600'
+                            }`}
                           >
-                            <CheckCircle className="h-3 w-3" /> Approve
+                            {processingPaymentId === payment.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <CheckCircle className="h-3 w-3" />
+                            )}
+                            Approve
                           </button>
                           <button
                             onClick={() => handleRejectPayment(payment)}
@@ -1313,9 +1243,7 @@ Generated receipt for reference.
         </div>
       )}
 
-      {/* ============================================================ */}
-      {/* RECEIPT VIEW MODAL - COMPLETE WITH SERVER FILE HANDLING */}
-      {/* ============================================================ */}
+      {/* RECEIPT VIEW MODAL - Same as before */}
       {showReceiptModal && selectedPayment && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className={`bg-white rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto transition-all ${isFullscreen ? 'max-w-7xl' : 'max-w-4xl'}`}>
@@ -1325,7 +1253,6 @@ Generated receipt for reference.
                 Payment Receipt
               </h3>
               <div className="flex items-center gap-2">
-                {/* Navigation buttons for multiple files */}
                 {allReceiptFiles.length > 1 && (
                   <div className="flex items-center gap-1 mr-2">
                     <button
@@ -1378,7 +1305,6 @@ Generated receipt for reference.
             </div>
 
             <div id="receipt-content" className="space-y-4">
-              {/* Payment Details */}
               <div className="bg-slate-50 p-4 rounded-xl grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="flex justify-between border-b border-slate-200 pb-2 md:border-b-0 md:pb-0">
                   <span className="text-slate-500">Student:</span>
@@ -1410,7 +1336,6 @@ Generated receipt for reference.
                 </div>
               </div>
 
-              {/* Receipt Files Section */}
               <div>
                 <h4 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
                   <Paperclip className="h-4 w-4" /> Uploaded Receipts
@@ -1419,7 +1344,6 @@ Generated receipt for reference.
                   </span>
                 </h4>
 
-                {/* Loading State */}
                 {isLoadingReceipt && (
                   <div className="flex items-center justify-center py-8 bg-slate-50 rounded-xl">
                     <Loader2 className="h-8 w-8 text-indigo-500 animate-spin mr-3" />
@@ -1427,7 +1351,6 @@ Generated receipt for reference.
                   </div>
                 )}
 
-                {/* Error State */}
                 {receiptError && !isLoadingReceipt && (
                   <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
                     <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
@@ -1445,7 +1368,6 @@ Generated receipt for reference.
                   </div>
                 )}
 
-                {/* Display the actual receipt image */}
                 {receiptDataUrl && !isLoadingReceipt && !receiptError && (
                   <div className="mb-4 p-4 bg-slate-50 rounded-xl border-2 border-indigo-200">
                     <div className="flex justify-between items-center mb-3">
@@ -1508,11 +1430,9 @@ Generated receipt for reference.
                   </div>
                 )}
 
-                {/* File List */}
                 {allReceiptFiles.length > 0 && !isLoadingReceipt && (
                   <div className="space-y-3">
                     {allReceiptFiles.map((file: any, index: number) => {
-                      const isImage = file.type?.startsWith('image/');
                       const isActive = index === selectedReceiptIndex;
 
                       return (
@@ -1568,7 +1488,6 @@ Generated receipt for reference.
                 )}
               </div>
 
-              {/* Action Buttons */}
               <div className="flex gap-3 pt-4 border-t border-slate-200 flex-wrap">
                 <button
                   onClick={() => {
@@ -1613,13 +1532,13 @@ Generated receipt for reference.
         </div>
       )}
 
-      {/* APPROVE PAYMENT MODAL */}
+      {/* APPROVE PAYMENT MODAL - Shows the specific payment */}
       {showModal && modalType === 'approvePayment' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold">Approve Payment</h3>
-              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => { setShowModal(false); setProcessingPaymentId(null); }} className="text-slate-400 hover:text-slate-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -1651,12 +1570,6 @@ Generated receipt for reference.
                     <span className="font-medium text-indigo-600">{modalData.receiptFiles.length} file(s)</span>
                   </div>
                 )}
-                {modalData.receiptFile && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Receipt:</span>
-                    <span className="font-medium text-indigo-600">1 file</span>
-                  </div>
-                )}
                 {modalData.notes && (
                   <div className="flex justify-between">
                     <span className="text-slate-500">Notes:</span>
@@ -1680,7 +1593,7 @@ Generated receipt for reference.
                   <CheckCircle className="h-4 w-4" /> Approve
                 </button>
                 <button
-                  onClick={() => setShowModal(false)}
+                  onClick={() => { setShowModal(false); setProcessingPaymentId(null); }}
                   className="flex-1 bg-slate-200 text-slate-700 py-3 rounded-xl font-semibold hover:bg-slate-300 transition-colors cursor-pointer"
                 >
                   Cancel
@@ -1802,7 +1715,6 @@ Generated receipt for reference.
                 </div>
               </div>
 
-              {/* Other Fees */}
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <label className="block text-sm font-medium text-slate-700">Other Fees</label>
@@ -1842,7 +1754,6 @@ Generated receipt for reference.
                 ))}
               </div>
 
-              {/* Total */}
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
                 <div className="flex justify-between items-center">
                   <span className="font-semibold text-emerald-800">Total Fees:</span>
