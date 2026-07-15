@@ -3,8 +3,12 @@ services:
     name: safari-school-system
     runtime: node
     plan: free
-    buildCommand: npm install && chmod +x node_modules/.bin/vite && npm run build
+    buildCommand: npm run render-build
     startCommand: npm start
     envVars:
       - key: NODE_VERSION
         value: 20.18.0
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
