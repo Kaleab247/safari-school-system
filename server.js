@@ -1,4 +1,4 @@
-// server.js - Without CSP headers (using meta tag instead)
+// server.js - No CSP headers at all (using meta tag only)
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -21,8 +21,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'production',
-    uptime: process.uptime()
+    environment: process.env.NODE_ENV || 'production'
   });
 });
 
@@ -64,34 +63,22 @@ if (fs.existsSync(distPath)) {
     res.sendFile(path.join(distPath, 'index.html'));
   });
 } else {
-  console.log('⚠️ Dist folder not found. Please run build first.');
+  console.log('⚠️ Dist folder not found');
   app.get('*', (req, res) => {
     res.send(`
       <!DOCTYPE html>
       <html>
-        <head>
-          <title>School Management System</title>
-          <style>
-            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f8fafc; }
-            h1 { color: #1e293b; }
-            .status { color: #64748b; margin-top: 20px; }
-            .error { color: #ef4444; margin-top: 10px; }
-          </style>
-        </head>
+        <head><title>School Management System</title></head>
         <body>
           <h1>🏫 School Management System</h1>
-          <p class="status">Application is building... Please wait.</p>
-          <p class="status">If you see this, the build is not complete.</p>
-          <p class="error">⚠️ Please run: npm run build</p>
+          <p>Building... Please wait.</p>
         </body>
       </html>
     `);
   });
 }
 
-// Start server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📁 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📁 Serving from: ${distPath}`);
 });
