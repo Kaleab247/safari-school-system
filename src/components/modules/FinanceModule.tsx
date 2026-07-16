@@ -1,4 +1,4 @@
-// FinanceModule.tsx - Complete Auto-Refresh Version
+// FinanceModule.tsx - Complete Working Version with Approved/Rejected Tabs & Auto-Refresh
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   DollarSign, Coins, TrendingUp, TrendingDown,
@@ -930,7 +930,9 @@ export default function FinanceModule({
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* ============================================================ */}
+      {/* TABS - Pending | Approved | Rejected | Transactions | Fee Structure */}
+      {/* ============================================================ */}
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
         <button
           onClick={() => setActiveTab('pending')}
@@ -940,7 +942,7 @@ export default function FinanceModule({
               : 'text-slate-500 hover:bg-slate-100'
           }`}
         >
-          Pending
+          ⏳ Pending
           {pendingPayments.length > 0 && (
             <span className="ml-1 bg-yellow-400 text-yellow-900 px-1.5 py-0.5 rounded-full text-xs">
               {pendingPayments.length}
@@ -955,7 +957,7 @@ export default function FinanceModule({
               : 'text-slate-500 hover:bg-slate-100'
           }`}
         >
-          Approved
+          ✅ Approved
           {approvedPayments.length > 0 && (
             <span className="ml-1 bg-green-400 text-green-900 px-1.5 py-0.5 rounded-full text-xs">
               {approvedPayments.length}
@@ -970,7 +972,7 @@ export default function FinanceModule({
               : 'text-slate-500 hover:bg-slate-100'
           }`}
         >
-          Rejected
+          ❌ Rejected
           {rejectedPayments.length > 0 && (
             <span className="ml-1 bg-red-400 text-red-900 px-1.5 py-0.5 rounded-full text-xs">
               {rejectedPayments.length}
@@ -985,7 +987,7 @@ export default function FinanceModule({
               : 'text-slate-500 hover:bg-slate-100'
           }`}
         >
-          Transactions
+          📊 Transactions
         </button>
         <button
           onClick={() => setActiveTab('fee_structure')}
@@ -995,11 +997,13 @@ export default function FinanceModule({
               : 'text-slate-500 hover:bg-slate-100'
           }`}
         >
-          Fee Structure
+          ⚙️ Fee Structure
         </button>
       </div>
 
-      {/* PENDING PAYMENTS TAB */}
+      {/* ============================================================ */}
+      {/* TAB 1: PENDING PAYMENTS */}
+      {/* ============================================================ */}
       {activeTab === 'pending' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
@@ -1097,7 +1101,9 @@ export default function FinanceModule({
         </div>
       )}
 
-      {/* APPROVED PAYMENTS TAB */}
+      {/* ============================================================ */}
+      {/* TAB 2: APPROVED PAYMENTS */}
+      {/* ============================================================ */}
       {activeTab === 'approved' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
@@ -1116,6 +1122,12 @@ export default function FinanceModule({
                   className="pl-9 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-green-500 outline-none text-sm w-48"
                 />
               </div>
+              <button
+                onClick={handleRefresh}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-sm font-semibold transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <RefreshCw className="h-4 w-4" /> Refresh
+              </button>
             </div>
           </div>
           <div className="overflow-x-auto max-h-96 overflow-y-auto">
@@ -1174,7 +1186,9 @@ export default function FinanceModule({
         </div>
       )}
 
-      {/* REJECTED PAYMENTS TAB */}
+      {/* ============================================================ */}
+      {/* TAB 3: REJECTED PAYMENTS */}
+      {/* ============================================================ */}
       {activeTab === 'rejected' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
@@ -1193,6 +1207,12 @@ export default function FinanceModule({
                   className="pl-9 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-red-500 outline-none text-sm w-48"
                 />
               </div>
+              <button
+                onClick={handleRefresh}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-sm font-semibold transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <RefreshCw className="h-4 w-4" /> Refresh
+              </button>
             </div>
           </div>
           <div className="overflow-x-auto max-h-96 overflow-y-auto">
@@ -1253,7 +1273,9 @@ export default function FinanceModule({
         </div>
       )}
 
-      {/* TRANSACTIONS TAB */}
+      {/* ============================================================ */}
+      {/* TAB 4: TRANSACTIONS */}
+      {/* ============================================================ */}
       {activeTab === 'transactions' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
@@ -1271,6 +1293,12 @@ export default function FinanceModule({
                   className="pl-9 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm w-48"
                 />
               </div>
+              <button
+                onClick={handleRefresh}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-sm font-semibold transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                <RefreshCw className="h-4 w-4" /> Refresh
+              </button>
             </div>
           </div>
           <div className="overflow-x-auto max-h-96 overflow-y-auto">
@@ -1316,7 +1344,9 @@ export default function FinanceModule({
         </div>
       )}
 
-      {/* FEE STRUCTURE TAB */}
+      {/* ============================================================ */}
+      {/* TAB 5: FEE STRUCTURE */}
+      {/* ============================================================ */}
       {activeTab === 'fee_structure' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
@@ -1392,7 +1422,9 @@ export default function FinanceModule({
         </div>
       )}
 
-      {/* ============ MODALS ============ */}
+      {/* ============================================================ */}
+      {/* MODALS */}
+      {/* ============================================================ */}
 
       {/* RECEIPT VIEW MODAL */}
       {showReceiptModal && selectedPayment && (
