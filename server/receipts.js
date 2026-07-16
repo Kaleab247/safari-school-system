@@ -27,13 +27,11 @@ const storage = multer.diskStorage({
     const uniqueId = uuidv4();
     const ext = path.extname(file.originalname);
     const baseName = path.basename(file.originalname, ext);
-    // Clean filename: remove special chars and spaces
     const cleanBaseName = baseName.replace(/[^a-zA-Z0-9]/g, '_');
     cb(null, `${cleanBaseName}_${uniqueId}${ext}`);
   }
 });
 
-// File filter for validation
 const fileFilter = (req, file, cb) => {
   const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
   if (allowedTypes.includes(file.mimetype)) {
@@ -45,24 +43,32 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({
   storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
-  },
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter
 });
 
-// Upload receipt endpoint - supports multiple files
+// Generate unique receipt ID
+function generateReceiptId() {
+  const date = new Date();
+  const year = date.getFullYear().toString().slice(-2);
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `RCP-${year}${month}${day}-${random}`;
+}
+
+// Upload endpoint
 router.post('/upload', upload.array('receipts', 5), (req, res) => {
   try {
     const files = req.files;
     if (!files || files.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'No files uploaded'
-      });
+      return res.status(400).json({ success: false, error: 'No files uploaded' });
     }
 
+    const receiptId = generateReceiptId();
+
     const fileRecords = files.map(file => ({
+      receiptId: receiptId,
       originalName: file.originalname,
       storedName: file.filename,
       path: file.path,
@@ -72,26 +78,21 @@ router.post('/upload', upload.array('receipts', 5), (req, res) => {
       uploadedAt: new Date().toISOString()
     }));
 
-    console.log(`📤 Uploaded ${fileRecords.length} receipt(s)`);
-
+    console.log(`📤 Uploaded ${fileRecords.length} receipt(s) with ID: ${receiptId}`);
     res.json({
       success: true,
+      receiptId: receiptId,
       files: fileRecords
     });
   } catch (error) {
     console.error('Upload error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to upload files'
-    });
+    res.status(500).json({ success: false, error: 'Failed to upload files' });
   }
 });
 
-// Get receipt file (serve the actual file)
+// Get file
 router.get('/file/:filename', (req, res) => {
   const filename = req.params.filename;
-
-  // Security: prevent path traversal
   const safeFilename = path.basename(filename);
   const filePath = path.join(RECEIPTS_DIR, safeFilename);
 
@@ -99,7 +100,6 @@ router.get('/file/:filename', (req, res) => {
     return res.status(404).json({ error: 'File not found' });
   }
 
-  // Set appropriate content type
   const ext = path.extname(filePath).toLowerCase();
   const contentTypes = {
     '.jpg': 'image/jpeg',
@@ -108,14 +108,11 @@ router.get('/file/:filename', (req, res) => {
     '.pdf': 'application/pdf'
   };
 
-  const contentType = contentTypes[ext] || 'application/octet-stream';
-  res.setHeader('Content-Type', contentType);
-  res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
-
+  res.setHeader('Content-Type', contentTypes[ext] || 'application/octet-stream');
   res.sendFile(filePath);
 });
 
-// Get receipt info (metadata only)
+// Get file info
 router.get('/info/:filename', (req, res) => {
   const filename = req.params.filename;
   const safeFilename = path.basename(filename);
@@ -143,7 +140,7 @@ router.get('/info/:filename', (req, res) => {
   });
 });
 
-// Delete receipt
+// Delete file
 router.delete('/file/:filename', (req, res) => {
   const filename = req.params.filename;
   const safeFilename = path.basename(filename);
@@ -163,7 +160,7 @@ router.delete('/file/:filename', (req, res) => {
   }
 });
 
-// List all receipts with metadata
+// List all files
 router.get('/list', (req, res) => {
   try {
     const files = fs.readdirSync(RECEIPTS_DIR);
@@ -190,11 +187,7 @@ router.get('/list', (req, res) => {
         };
       });
 
-    res.json({
-      success: true,
-      count: fileInfos.length,
-      files: fileInfos
-    });
+    res.json({ success: true, count: fileInfos.length, files: fileInfos });
   } catch (error) {
     console.error('List error:', error);
     res.status(500).json({ error: 'Failed to list files' });
