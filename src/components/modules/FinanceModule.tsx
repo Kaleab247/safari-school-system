@@ -1,5 +1,4 @@
-// FinanceModule.tsx - Fixed Individual Approval/Rejection
-
+// FinanceModule.tsx - Complete Fixed Version
 import React, { useState, useEffect } from 'react';
 import {
   DollarSign, Coins, TrendingUp, TrendingDown,
@@ -10,7 +9,7 @@ import {
   EyeOff, Maximize2, Minimize2, Settings, Save,
   Edit2, Percent, Calendar, Users, BookOpen,
   School, Award, BarChart3, PieChart, User,
-  AlertTriangle, RefreshCw, Upload, Loader2
+  AlertTriangle, RefreshCw, Upload
 } from 'lucide-react';
 
 interface FinanceModuleProps {
@@ -75,13 +74,6 @@ export default function FinanceModule({
   const [editingFee, setEditingFee] = useState<FeeStructure | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [receiptDataUrl, setReceiptDataUrl] = useState<string | null>(null);
-  const [isLoadingReceipt, setIsLoadingReceipt] = useState(false);
-  const [receiptError, setReceiptError] = useState<string | null>(null);
-  const [allReceiptFiles, setAllReceiptFiles] = useState<any[]>([]);
-  const [selectedReceiptIndex, setSelectedReceiptIndex] = useState(0);
-
-  // Track which payment is being processed
-  const [processingPaymentId, setProcessingPaymentId] = useState<string | null>(null);
 
   // If schoolId is passed, automatically select it
   useEffect(() => {
@@ -100,6 +92,7 @@ export default function FinanceModule({
     loadPendingPayments();
   }, [selectedSchool]);
 
+  // ============ LOAD FEE STRUCTURES ============
   const loadFeeStructures = () => {
     try {
       const saved = localStorage.getItem('safari_fee_structures');
@@ -147,26 +140,42 @@ export default function FinanceModule({
     setFeeStructures(defaultFees.filter((f: any) => f.schoolId === selectedSchool || !f.schoolId));
   };
 
+  // ============ LOAD PENDING PAYMENTS - FIXED ============
   const loadPendingPayments = () => {
     try {
+      // Load from pending payments
       const saved = localStorage.getItem('safari_pending_payments');
       const allPending = saved ? JSON.parse(saved) : [];
 
+      // Load from admissions
       const admissions = JSON.parse(localStorage.getItem('safari_admissions') || '[]');
       const pendingAdmissions = admissions.filter((a: any) =>
-        a.hasReceipt && a.status === 'PaymentPending' && !a.approvedByFinance
+        a.hasReceipt &&
+        (a.status === 'PaymentPending' || a.status === 'Pending') &&
+        !a.approvedByFinance
       );
 
+      // Combine both sources
       let allPayments = [...allPending, ...pendingAdmissions];
 
+      // Filter by school if needed
       if (selectedSchool) {
-        allPayments = allPayments.filter((p: any) => p.schoolId === selectedSchool);
+        allPayments = allPayments.filter((p: any) =>
+          p.schoolId === selectedSchool || !p.schoolId
+        );
       }
 
-      // Remove duplicates
-      const uniquePayments = allPayments.filter((p: any, index: number, self: any[]) =>
-        index === self.findIndex((t: any) => t.id === p.id)
-      );
+      // FIX: Deduplicate by student name + grade (not just ID)
+      const seen = new Set();
+      const uniquePayments = allPayments.filter((p: any) => {
+        // Create a unique key using student name and grade
+        const key = `${p.candidateName || p.studentName || p.name}_${p.gradeApplied || p.grade || ''}`;
+        if (seen.has(key)) {
+          return false; // Skip duplicates
+        }
+        seen.add(key);
+        return true;
+      });
 
       setPendingPayments(uniquePayments);
     } catch (error) {
@@ -175,7 +184,7 @@ export default function FinanceModule({
     }
   };
 
-  // Get fee for a specific grade
+  // ============ GET FEE FOR GRADE ============
   const getFeeForGrade = (grade: string) => {
     return feeStructures.find((f: any) => f.grade === grade);
   };
@@ -192,9 +201,7 @@ export default function FinanceModule({
     );
   };
 
-  // ============ RECEIPT HANDLING ============
-
-  // Helper to check if an object is a File/Blob
+  // ============ FILE HANDLING ============
   const isFileLike = (obj: any): boolean => {
     if (!obj || typeof obj !== 'object') return false;
     return (
@@ -205,7 +212,6 @@ export default function FinanceModule({
     );
   };
 
-  // Helper to read a file as data URL
   const readFileAsDataURL = (file: any): Promise<string> => {
     return new Promise((resolve, reject) => {
       try {
@@ -225,129 +231,106 @@ export default function FinanceModule({
     });
   };
 
-  // Get receipt URL from server
-  const getReceiptUrl = (filename: string) => {
-    return `/api/receipts/file/${filename}`;
-  };
-
-  // View receipt modal
+  // ============ RECEIPT VIEWING ============
   const handleViewReceipt = (payment: any) => {
     setSelectedPayment(payment);
     setSelectedReceiptFile(null);
     setReceiptDataUrl(null);
-    setReceiptError(null);
-    setSelectedReceiptIndex(0);
-    setAllReceiptFiles([]);
     setShowReceiptModal(true);
 
-    // Collect all receipt files
-    let files: any[] = [];
-
     if (payment.receiptFiles && payment.receiptFiles.length > 0) {
-      files = payment.receiptFiles;
+      const firstFile = payment.receiptFiles[0];
+      loadReceiptFile(firstFile);
     } else if (payment.receiptFile) {
-      files = [payment.receiptFile];
-    }
-
-    setAllReceiptFiles(files);
-
-    if (files.length > 0) {
-      loadReceiptFile(files[0]);
+      loadReceiptFile(payment.receiptFile);
     }
   };
 
-  // Load the actual receipt file data
   const loadReceiptFile = async (file: any) => {
     console.log('Loading receipt file:', file);
-    setIsLoadingReceipt(true);
-    setReceiptError(null);
 
     try {
-      // Case 1: File has a server URL
-      if (file && file.url) {
-        const fullUrl = file.url.startsWith('http') ? file.url : `/api/receipts/file/${file.storedName || file.url.split('/').pop()}`;
-        setReceiptDataUrl(fullUrl);
-        setSelectedReceiptFile({ ...file, dataUrl: fullUrl });
-        setIsLoadingReceipt(false);
-        return;
-      }
-
-      // Case 2: File has a storedName
-      if (file && file.storedName) {
-        const fileUrl = `/api/receipts/file/${file.storedName}`;
-        try {
-          const response = await fetch(fileUrl, { method: 'HEAD' });
-          if (response.ok) {
-            setReceiptDataUrl(fileUrl);
-            setSelectedReceiptFile({ ...file, dataUrl: fileUrl });
-            setIsLoadingReceipt(false);
-            return;
-          }
-        } catch {
-          setReceiptError('File not found on server.');
-          setIsLoadingReceipt(false);
-          return;
-        }
-      }
-
-      // Case 3: File has dataUrl already
       if (file && file.dataUrl) {
         setReceiptDataUrl(file.dataUrl);
         setSelectedReceiptFile(file);
-        setIsLoadingReceipt(false);
         return;
       }
 
-      // Case 4: File is a File/Blob object
+      if (file && file.file) {
+        if (isFileLike(file.file)) {
+          const dataUrl = await readFileAsDataURL(file.file);
+          setReceiptDataUrl(dataUrl);
+          setSelectedReceiptFile({ ...file, dataUrl: dataUrl });
+          return;
+        }
+        if (typeof file.file === 'string') {
+          if (file.file.startsWith('data:')) {
+            setReceiptDataUrl(file.file);
+            setSelectedReceiptFile({ ...file, dataUrl: file.file });
+            return;
+          }
+          try {
+            const response = await fetch(file.file);
+            const blob = await response.blob();
+            const dataUrl = await readFileAsDataURL(blob);
+            setReceiptDataUrl(dataUrl);
+            setSelectedReceiptFile({ ...file, dataUrl: dataUrl });
+            return;
+          } catch {
+            setSelectedReceiptFile(file);
+            return;
+          }
+        }
+      }
+
       if (isFileLike(file)) {
         const dataUrl = await readFileAsDataURL(file);
         setReceiptDataUrl(dataUrl);
         setSelectedReceiptFile({ ...file, dataUrl: dataUrl });
-        setIsLoadingReceipt(false);
         return;
       }
 
-      // Case 5: File has a filename
-      if (file && file.filename) {
-        const fileUrl = `/api/receipts/file/${file.filename}`;
-        try {
-          const response = await fetch(fileUrl, { method: 'HEAD' });
-          if (response.ok) {
-            setReceiptDataUrl(fileUrl);
-            setSelectedReceiptFile({ ...file, dataUrl: fileUrl });
-            setIsLoadingReceipt(false);
+      if (typeof file === 'string') {
+        if (file.startsWith('data:')) {
+          setReceiptDataUrl(file);
+          setSelectedReceiptFile({ dataUrl: file });
+          return;
+        }
+        if (file.startsWith('http')) {
+          try {
+            const response = await fetch(file);
+            const blob = await response.blob();
+            const dataUrl = await readFileAsDataURL(blob);
+            setReceiptDataUrl(dataUrl);
+            setSelectedReceiptFile({ dataUrl: dataUrl });
+            return;
+          } catch {
+            window.open(file, '_blank');
             return;
           }
-        } catch {
-          // File not found
         }
+        window.open(file, '_blank');
+        return;
+      }
+
+      if (file && file.url) {
+        if (file.url.startsWith('data:')) {
+          setReceiptDataUrl(file.url);
+          setSelectedReceiptFile({ ...file, dataUrl: file.url });
+          return;
+        }
+        window.open(file.url, '_blank');
+        return;
       }
 
       setSelectedReceiptFile(file);
-      setReceiptError('Unable to preview this file. Try downloading it instead.');
-      setIsLoadingReceipt(false);
     } catch (error) {
       console.error('Error loading receipt file:', error);
-      setReceiptError('Error loading file. Please try again.');
-      setIsLoadingReceipt(false);
+      showNotification('Error loading receipt file', 'error');
+      setSelectedReceiptFile(file);
     }
   };
 
-  // Navigate through multiple receipt files
-  const navigateReceipt = (direction: 'prev' | 'next') => {
-    if (allReceiptFiles.length === 0) return;
-
-    let newIndex = selectedReceiptIndex;
-    if (direction === 'next') {
-      newIndex = (newIndex + 1) % allReceiptFiles.length;
-    } else {
-      newIndex = (newIndex - 1 + allReceiptFiles.length) % allReceiptFiles.length;
-    }
-    setSelectedReceiptIndex(newIndex);
-    loadReceiptFile(allReceiptFiles[newIndex]);
-  };
-
-  // Download Receipt
   const handleDownloadReceipt = (file: any) => {
     console.log('Downloading receipt file:', file);
 
@@ -364,29 +347,7 @@ export default function FinanceModule({
     };
 
     try {
-      if (file?.url) {
-        window.open(file.url, '_blank');
-        return;
-      }
-
-      if (file?.storedName) {
-        const fileUrl = `/api/receipts/file/${file.storedName}`;
-        window.open(fileUrl, '_blank');
-        return;
-      }
-
-      if (file?.filename) {
-        const fileUrl = `/api/receipts/file/${file.filename}`;
-        window.open(fileUrl, '_blank');
-        return;
-      }
-
       if (file?.dataUrl) {
-        if (file.dataUrl.startsWith('/api/') || file.dataUrl.startsWith('http')) {
-          window.open(file.dataUrl, '_blank');
-          return;
-        }
-
         fetch(file.dataUrl)
           .then(res => res.blob())
           .then(blob => {
@@ -394,16 +355,59 @@ export default function FinanceModule({
             const filename = file.name || `receipt.${extension}`;
             triggerDownload(blob, filename);
           })
-          .catch(() => showNotification('Error downloading file', 'error'));
+          .catch(() => {
+            if (file.dataUrl.startsWith('blob:')) {
+              fetch(file.dataUrl)
+                .then(res => res.blob())
+                .then(blob => triggerDownload(blob, file.name || 'receipt.png'))
+                .catch(() => showNotification('Error downloading file', 'error'));
+            } else {
+              showNotification('Error downloading file', 'error');
+            }
+          });
+        return;
+      }
+
+      if (file?.file) {
+        if (isFileLike(file.file)) {
+          triggerDownload(file.file, file.name || 'receipt');
+          return;
+        }
+        if (typeof file.file === 'string') {
+          if (file.file.startsWith('data:')) {
+            fetch(file.file)
+              .then(res => res.blob())
+              .then(blob => triggerDownload(blob, file.name || 'receipt.png'))
+              .catch(() => window.open(file.file, '_blank'));
+            return;
+          }
+          window.open(file.file, '_blank');
+          return;
+        }
+      }
+
+      if (isFileLike(file)) {
+        triggerDownload(file, file.name || 'receipt');
         return;
       }
 
       if (typeof file === 'string') {
-        window.open(file, '_blank');
+        if (file.startsWith('data:')) {
+          fetch(file)
+            .then(res => res.blob())
+            .then(blob => triggerDownload(blob, 'receipt.png'))
+            .catch(() => window.open(file, '_blank'));
+        } else {
+          window.open(file, '_blank');
+        }
         return;
       }
 
-      // Fallback: Generate text receipt
+      if (file && file.url) {
+        window.open(file.url, '_blank');
+        return;
+      }
+
       const receiptData = {
         studentName: selectedPayment?.candidateName || selectedPayment?.studentName || selectedPayment?.name || 'Student',
         schoolName: selectedPayment?.schoolName || 'School',
@@ -412,18 +416,18 @@ export default function FinanceModule({
       };
 
       const content = `
-========================================
-PAYMENT RECEIPT
-========================================
+        ========================================
+        PAYMENT RECEIPT
+        ========================================
 
-Student: ${receiptData.studentName}
-School: ${receiptData.schoolName}
-Amount: ${receiptData.amount} Birr
-Date: ${receiptData.date}
+        Student: ${receiptData.studentName}
+        School: ${receiptData.schoolName}
+        Amount: ${receiptData.amount} Birr
+        Date: ${receiptData.date}
 
-========================================
-Generated receipt for reference.
-========================================
+        ========================================
+        Generated receipt for reference.
+        ========================================
       `;
 
       const blob = new Blob([content], { type: 'text/plain' });
@@ -434,7 +438,6 @@ Generated receipt for reference.
     }
   };
 
-  // Print Receipt
   const handlePrintReceipt = () => {
     const printContent = document.getElementById('receipt-content');
     if (printContent) {
@@ -453,8 +456,6 @@ Generated receipt for reference.
                 .total { font-size: 20px; font-weight: bold; color: #059669; margin-top: 20px; }
                 .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
                 img { max-width: 100%; }
-                .file-list { margin: 20px 0; }
-                .file-item { padding: 8px; background: #f8fafc; border-radius: 8px; margin: 4px 0; }
               </style>
             </head>
             <body>
@@ -471,14 +472,6 @@ Generated receipt for reference.
                   <div class="row"><span>Status:</span><span>${selectedPayment?.status || 'Pending'}</span></div>
                 </div>
                 ${receiptDataUrl ? `<div style="margin: 20px 0;"><img src="${receiptDataUrl}" alt="Receipt" style="max-width:100%;"/></div>` : ''}
-                ${allReceiptFiles.length > 0 ? `
-                  <div class="file-list">
-                    <h4>Attached Files (${allReceiptFiles.length})</h4>
-                    ${allReceiptFiles.map((f: any) => `
-                      <div class="file-item">${f.originalName || f.name || 'Receipt file'}</div>
-                    `).join('')}
-                  </div>
-                ` : ''}
                 <div class="total">Total: ${selectedPayment?.feeAmount || selectedPayment?.amount || 0} Birr</div>
                 <div class="footer">Printed on ${new Date().toLocaleString()}</div>
               </div>
@@ -493,10 +486,8 @@ Generated receipt for reference.
     }
   };
 
-  // ============ FIXED: INDIVIDUAL PAYMENT APPROVAL ============
+  // ============ PAYMENT APPROVAL - FIXED ============
   const handleApprovePayment = (payment: any) => {
-    // Set the payment being processed
-    setProcessingPaymentId(payment.id);
     setModalType('approvePayment');
     setModalData({
       ...payment,
@@ -505,16 +496,13 @@ Generated receipt for reference.
     setShowModal(true);
   };
 
-  // FIXED: Only approves the specific payment that was clicked
   const handleConfirmApproval = () => {
-    // Get the specific payment from the modal data
-    const paymentToApprove = modalData;
-    const amount = paymentToApprove.feeAmount || paymentToApprove.amount || 0;
-    const studentName = paymentToApprove.candidateName || paymentToApprove.studentName || paymentToApprove.name;
-    const studentGrade = paymentToApprove.gradeApplied || paymentToApprove.grade || 'PreKG';
-    const parentName = paymentToApprove.parentName || '';
-    const parentEmail = paymentToApprove.email || paymentToApprove.parentEmail || '';
-    const studentEmail = paymentToApprove.email || '';
+    const amount = modalData.feeAmount || modalData.amount || 0;
+    const studentName = modalData.candidateName || modalData.studentName || modalData.name;
+    const studentGrade = modalData.gradeApplied || modalData.grade || 'PreKG';
+    const parentName = modalData.parentName || '';
+    const parentEmail = modalData.email || modalData.parentEmail || '';
+    const studentEmail = modalData.email || '';
 
     // 1. Record the transaction
     if (onAddTransaction) {
@@ -522,7 +510,7 @@ Generated receipt for reference.
         amount,
         'Income',
         'Tuition',
-        `Tuition payment for ${studentName} - ${paymentToApprove.schoolName || ''}`,
+        `Tuition payment for ${studentName} - ${modalData.schoolName || ''}`,
         'BankTransfer'
       );
     } else {
@@ -534,30 +522,39 @@ Generated receipt for reference.
         amount: amount,
         date: new Date().toLocaleDateString(),
         description: `Tuition payment for ${studentName}`,
-        paymentMethod: paymentToApprove.paymentMethod || 'BankTransfer',
+        paymentMethod: modalData.paymentMethod || 'BankTransfer',
         status: 'Paid',
-        schoolId: selectedSchool || propSchoolId,
-        schoolName: paymentToApprove.schoolName || propSchoolName
+        schoolId: selectedSchool || modalData.schoolId || '',
+        schoolName: modalData.schoolName || propSchoolName || ''
       });
       localStorage.setItem('safari_transactions', JSON.stringify(transactions));
     }
 
-    // 2. Remove ONLY this specific payment from pending payments
+    // 2. Remove from pending payments - FIX: Remove by student name + grade
     const allPending = JSON.parse(localStorage.getItem('safari_pending_payments') || '[]');
-    const updatedPending = allPending.filter((p: any) => p.id !== paymentToApprove.id);
+    const updatedPending = allPending.filter((p: any) => {
+      const pName = p.candidateName || p.studentName || p.name;
+      const pGrade = p.gradeApplied || p.grade || '';
+      return !(pName === studentName && pGrade === studentGrade);
+    });
     localStorage.setItem('safari_pending_payments', JSON.stringify(updatedPending));
 
-    // 3. Update ONLY this specific admission
+    // 3. Update admissions - FIX: Update by student name + grade
     const admissions = JSON.parse(localStorage.getItem('safari_admissions') || '[]');
-    const updatedAdmissions = admissions.map((a: any) =>
-      a.id === paymentToApprove.id ? {
-        ...a,
-        status: 'Accepted',
-        approvedByFinance: true,
-        feePaid: amount,
-        feePaidDate: new Date().toLocaleDateString()
-      } : a
-    );
+    const updatedAdmissions = admissions.map((a: any) => {
+      const aName = a.candidateName || a.studentName || a.name;
+      const aGrade = a.gradeApplied || a.grade || '';
+      if (aName === studentName && aGrade === studentGrade) {
+        return {
+          ...a,
+          status: 'Accepted',
+          approvedByFinance: true,
+          feePaid: amount,
+          feePaidDate: new Date().toLocaleDateString()
+        };
+      }
+      return a;
+    });
     localStorage.setItem('safari_admissions', JSON.stringify(updatedAdmissions));
 
     // 4. Create pending student record for Principal
@@ -570,110 +567,73 @@ Generated receipt for reference.
       parentEmail: parentEmail,
       gradeApplied: studentGrade,
       grade: studentGrade,
-      phone: paymentToApprove.phone || '',
-      schoolId: selectedSchool || propSchoolId || paymentToApprove.schoolId,
-      schoolName: paymentToApprove.schoolName || propSchoolName || '',
+      phone: modalData.phone || '',
+      schoolId: selectedSchool || modalData.schoolId || '',
+      schoolName: modalData.schoolName || propSchoolName || '',
       feePaid: amount,
       feePaidDate: new Date().toISOString(),
       status: 'Pending',
       approvedBy: userName,
       approvedDate: new Date().toISOString(),
-      receiptFiles: paymentToApprove.receiptFiles || [],
+      receiptFiles: modalData.receiptFiles || [],
       hasReceipt: true,
-      submittedDate: paymentToApprove.submittedDate || new Date().toLocaleDateString()
+      submittedDate: modalData.submittedDate || new Date().toLocaleDateString()
     };
 
-    // Save to pending students
     const existingPending = JSON.parse(localStorage.getItem('safari_pending_students') || '[]');
-    const exists = existingPending.some((s: any) => s.candidateName === studentName && s.schoolId === pendingStudent.schoolId);
+    const exists = existingPending.some((s: any) =>
+      s.candidateName === studentName && s.schoolId === pendingStudent.schoolId
+    );
     if (!exists) {
       existingPending.push(pendingStudent);
       localStorage.setItem('safari_pending_students', JSON.stringify(existingPending));
     }
 
-    // 5. Update pending payments state - remove ONLY the approved one
-    setPendingPayments(updatedPending.filter((p: any) => p.schoolId === selectedSchool));
+    // FIX: Reload the pending payments list completely
+    loadPendingPayments();
 
     showNotification(
       `✅ Payment of ${amount} Birr approved for ${studentName}! Student has been sent to Principal for enrollment.`,
       'success'
     );
     setShowModal(false);
-    setProcessingPaymentId(null);
-    setModalData({});
   };
 
-  // FIXED: Individual Rejection
+  // ============ PAYMENT REJECTION - FIXED ============
   const handleRejectPayment = (payment: any) => {
-    if (window.confirm(`Reject payment for ${payment.candidateName || payment.studentName || payment.name}?`)) {
-      // Remove ONLY this specific payment
+    const studentName = payment.candidateName || payment.studentName || payment.name;
+    const studentGrade = payment.gradeApplied || payment.grade || '';
+
+    if (window.confirm(`Reject payment for ${studentName}?`)) {
+      // Remove from pending payments - FIX: Remove by student name + grade
       const allPending = JSON.parse(localStorage.getItem('safari_pending_payments') || '[]');
-      const updatedPending = allPending.filter((p: any) => p.id !== payment.id);
+      const updatedPending = allPending.filter((p: any) => {
+        const pName = p.candidateName || p.studentName || p.name;
+        const pGrade = p.gradeApplied || p.grade || '';
+        return !(pName === studentName && pGrade === studentGrade);
+      });
       localStorage.setItem('safari_pending_payments', JSON.stringify(updatedPending));
 
-      // Update ONLY this specific admission
+      // Update admissions - mark as Declined
       const admissions = JSON.parse(localStorage.getItem('safari_admissions') || '[]');
-      const updatedAdmissions = admissions.map((a: any) =>
-        a.id === payment.id ? { ...a, status: 'Declined' } : a
-      );
+      const updatedAdmissions = admissions.map((a: any) => {
+        const aName = a.candidateName || a.studentName || a.name;
+        const aGrade = a.gradeApplied || a.grade || '';
+        if (aName === studentName && aGrade === studentGrade) {
+          return { ...a, status: 'Declined' };
+        }
+        return a;
+      });
       localStorage.setItem('safari_admissions', JSON.stringify(updatedAdmissions));
 
-      // Update state - remove ONLY the rejected one
-      setPendingPayments(updatedPending.filter((p: any) => p.schoolId === selectedSchool));
-      showNotification(`❌ Payment rejected for ${payment.candidateName || payment.studentName || payment.name}`, 'error');
+      // FIX: Reload the pending payments list completely
+      loadPendingPayments();
+
+      showNotification(`❌ Payment rejected for ${studentName}`, 'error');
     }
   };
 
-  // Get filtered pending payments
-  const getFilteredPending = () => {
-    if (!searchQuery) return pendingPayments;
-    return pendingPayments.filter((p: any) =>
-      p.candidateName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.studentName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.parentName?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  };
-
-  const getStatusBadge = (status: string) => {
-    const colors: Record<string, string> = {
-      'Pending': 'bg-yellow-100 text-yellow-700',
-      'Approved': 'bg-green-100 text-green-700',
-      'Rejected': 'bg-red-100 text-red-700',
-      'PaymentPending': 'bg-blue-100 text-blue-700'
-    };
-    return colors[status] || 'bg-slate-100 text-slate-700';
-  };
-
-  const getFileIcon = (fileType: string) => {
-    if (fileType?.startsWith('image/')) {
-      return <Image className="h-5 w-5 text-indigo-500" />;
-    }
-    if (fileType === 'application/pdf') {
-      return <FileText className="h-5 w-5 text-red-500" />;
-    }
-    return <File className="h-5 w-5 text-indigo-500" />;
-  };
-
-  const getFileColor = (fileType: string) => {
-    if (fileType?.startsWith('image/')) return 'border-indigo-200 bg-indigo-50';
-    if (fileType === 'application/pdf') return 'border-red-200 bg-red-50';
-    return 'border-blue-200 bg-blue-50';
-  };
-
-  // Manual refresh
-  const handleRefresh = () => {
-    setIsLoading(true);
-    loadFeeStructures();
-    loadPendingPayments();
-    setTimeout(() => {
-      setIsLoading(false);
-      showNotification('Data refreshed successfully!', 'success');
-    }, 500);
-  };
-
-  // Fee Structure Management
+  // ============ FEE STRUCTURE MANAGEMENT ============
   const handleOpenFeeManager = () => {
     setModalType('feeManager');
     setModalData({ grade: '', schoolId: selectedSchool || propSchoolId || '' });
@@ -756,6 +716,55 @@ Generated receipt for reference.
     const otherFees = modalData.otherFees || [];
     otherFees[index] = { ...otherFees[index], [field]: value };
     setModalData({ ...modalData, otherFees });
+  };
+
+  // ============ REFRESH ============
+  const handleRefresh = () => {
+    setIsLoading(true);
+    loadFeeStructures();
+    loadPendingPayments();
+    setTimeout(() => {
+      setIsLoading(false);
+      showNotification('Data refreshed successfully!', 'success');
+    }, 500);
+  };
+
+  // ============ FILTERS ============
+  const getFilteredPending = () => {
+    if (!searchQuery) return pendingPayments;
+    return pendingPayments.filter((p: any) =>
+      p.candidateName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.studentName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.parentName?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  };
+
+  const getStatusBadge = (status: string) => {
+    const colors: Record<string, string> = {
+      'Pending': 'bg-yellow-100 text-yellow-700',
+      'Approved': 'bg-green-100 text-green-700',
+      'Rejected': 'bg-red-100 text-red-700',
+      'PaymentPending': 'bg-blue-100 text-blue-700'
+    };
+    return colors[status] || 'bg-slate-100 text-slate-700';
+  };
+
+  const getFileIcon = (fileType: string) => {
+    if (fileType?.startsWith('image/')) {
+      return <Image className="h-5 w-5 text-indigo-500" />;
+    }
+    if (fileType === 'application/pdf') {
+      return <FileText className="h-5 w-5 text-red-500" />;
+    }
+    return <File className="h-5 w-5 text-indigo-500" />;
+  };
+
+  const getFileColor = (fileType: string) => {
+    if (fileType?.startsWith('image/')) return 'border-indigo-200 bg-indigo-50';
+    if (fileType === 'application/pdf') return 'border-red-200 bg-red-50';
+    return 'border-blue-200 bg-blue-50';
   };
 
   const assignedSchools = schools.filter((s: any) => s.status === 'active');
@@ -986,7 +995,7 @@ Generated receipt for reference.
         </div>
       )}
 
-      {/* PENDING PAYMENTS TAB - FIXED with individual actions */}
+      {/* PENDING PAYMENTS TAB - FIXED */}
       {activeTab === 'pending' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
@@ -1016,7 +1025,6 @@ Generated receipt for reference.
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-slate-600 sticky top-0">
                 <tr>
-                  <th className="px-4 py-2 text-left">#</th>
                   <th className="px-4 py-2 text-left">Student</th>
                   <th className="px-4 py-2 text-left">School</th>
                   <th className="px-4 py-2 text-left">Grade</th>
@@ -1029,14 +1037,13 @@ Generated receipt for reference.
               <tbody className="divide-y divide-slate-100">
                 {getFilteredPending().length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
+                    <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
                       {selectedSchool ? 'No pending payments for this school.' : 'No pending payments.'}
                     </td>
                   </tr>
                 ) : (
-                  getFilteredPending().map((payment: any, index: number) => (
-                    <tr key={payment.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 text-slate-400 text-center">{index + 1}</td>
+                  getFilteredPending().map((payment: any) => (
+                    <tr key={`${payment.candidateName || payment.studentName || payment.name}_${payment.gradeApplied || payment.grade || ''}`} className="hover:bg-slate-50">
                       <td className="px-4 py-3 font-medium">{payment.candidateName || payment.studentName || payment.name}</td>
                       <td className="px-4 py-3">{payment.schoolName || 'N/A'}</td>
                       <td className="px-4 py-3">{payment.gradeApplied || payment.grade || 'N/A'}</td>
@@ -1049,14 +1056,14 @@ Generated receipt for reference.
                             onClick={() => handleViewReceipt(payment)}
                             className="text-indigo-600 hover:text-indigo-800 text-xs font-semibold flex items-center gap-1 cursor-pointer"
                           >
-                            <FileText className="h-4 w-4" /> View ({payment.receiptFiles?.length || 1})
+                            <FileText className="h-4 w-4" /> View Receipt ({payment.receiptFiles?.length || 1})
                           </button>
                         ) : payment.receiptFile ? (
                           <button
                             onClick={() => handleViewReceipt(payment)}
                             className="text-indigo-600 hover:text-indigo-800 text-xs font-semibold flex items-center gap-1 cursor-pointer"
                           >
-                            <FileText className="h-4 w-4" /> View
+                            <FileText className="h-4 w-4" /> View Receipt
                           </button>
                         ) : (
                           <span className="text-slate-400 text-xs">No receipt</span>
@@ -1071,19 +1078,9 @@ Generated receipt for reference.
                         <div className="flex gap-1 flex-wrap">
                           <button
                             onClick={() => handleApprovePayment(payment)}
-                            disabled={processingPaymentId === payment.id}
-                            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer ${
-                              processingPaymentId === payment.id
-                                ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                                : 'bg-emerald-500 text-white hover:bg-emerald-600'
-                            }`}
+                            className="px-2 py-1 bg-emerald-500 text-white rounded-lg text-xs font-semibold hover:bg-emerald-600 transition-colors flex items-center gap-1 cursor-pointer"
                           >
-                            {processingPaymentId === payment.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <CheckCircle className="h-3 w-3" />
-                            )}
-                            Approve
+                            <CheckCircle className="h-3 w-3" /> Approve
                           </button>
                           <button
                             onClick={() => handleRejectPayment(payment)}
@@ -1243,7 +1240,7 @@ Generated receipt for reference.
         </div>
       )}
 
-      {/* RECEIPT VIEW MODAL - Same as before */}
+      {/* RECEIPT VIEW MODAL */}
       {showReceiptModal && selectedPayment && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className={`bg-white rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto transition-all ${isFullscreen ? 'max-w-7xl' : 'max-w-4xl'}`}>
@@ -1253,27 +1250,6 @@ Generated receipt for reference.
                 Payment Receipt
               </h3>
               <div className="flex items-center gap-2">
-                {allReceiptFiles.length > 1 && (
-                  <div className="flex items-center gap-1 mr-2">
-                    <button
-                      onClick={() => navigateReceipt('prev')}
-                      className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-slate-600 cursor-pointer"
-                      title="Previous file"
-                    >
-                      <ChevronDown className="h-4 w-4 rotate-90" />
-                    </button>
-                    <span className="text-xs text-slate-500">
-                      {selectedReceiptIndex + 1}/{allReceiptFiles.length}
-                    </span>
-                    <button
-                      onClick={() => navigateReceipt('next')}
-                      className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors text-slate-600 cursor-pointer"
-                      title="Next file"
-                    >
-                      <ChevronDown className="h-4 w-4 -rotate-90" />
-                    </button>
-                  </div>
-                )}
                 <button
                   onClick={() => setIsFullscreen(!isFullscreen)}
                   className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
@@ -1293,9 +1269,7 @@ Generated receipt for reference.
                     setShowReceiptModal(false);
                     setSelectedReceiptFile(null);
                     setReceiptDataUrl(null);
-                    setReceiptError(null);
                     setIsFullscreen(false);
-                    setAllReceiptFiles([]);
                   }}
                   className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
                 >
@@ -1336,138 +1310,101 @@ Generated receipt for reference.
                 </div>
               </div>
 
+              {/* Receipt Files with Actual Images */}
               <div>
                 <h4 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
                   <Paperclip className="h-4 w-4" /> Uploaded Receipts
                   <span className="text-sm text-slate-400 font-normal ml-2">
-                    ({allReceiptFiles.length} files)
+                    ({selectedPayment.receiptFiles?.length || 0} files)
                   </span>
                 </h4>
 
-                {isLoadingReceipt && (
-                  <div className="flex items-center justify-center py-8 bg-slate-50 rounded-xl">
-                    <Loader2 className="h-8 w-8 text-indigo-500 animate-spin mr-3" />
-                    <span className="text-slate-500">Loading receipt...</span>
-                  </div>
-                )}
-
-                {receiptError && !isLoadingReceipt && (
-                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
-                    <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
-                    <p className="text-red-600">{receiptError}</p>
-                    <button
-                      onClick={() => {
-                        if (allReceiptFiles.length > 0) {
-                          loadReceiptFile(allReceiptFiles[selectedReceiptIndex]);
-                        }
-                      }}
-                      className="mt-2 px-4 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-semibold hover:bg-red-200 transition-colors cursor-pointer"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                )}
-
-                {receiptDataUrl && !isLoadingReceipt && !receiptError && (
+                {receiptDataUrl && (
                   <div className="mb-4 p-4 bg-slate-50 rounded-xl border-2 border-indigo-200">
                     <div className="flex justify-between items-center mb-3">
-                      <span className="font-medium text-slate-700">
-                        {selectedReceiptFile?.originalName || selectedReceiptFile?.name || 'Receipt Image'}
-                      </span>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => {
-                            if (selectedReceiptFile) {
-                              handleDownloadReceipt(selectedReceiptFile);
-                            } else if (receiptDataUrl) {
-                              const link = document.createElement('a');
-                              link.href = receiptDataUrl;
-                              link.download = 'receipt_image.png';
-                              document.body.appendChild(link);
-                              link.click();
-                              document.body.removeChild(link);
-                            }
-                          }}
-                          className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition-colors flex items-center gap-1 cursor-pointer"
-                        >
-                          <Download className="h-3.5 w-3.5" /> Download
-                        </button>
-                      </div>
+                      <span className="font-medium text-slate-700">Receipt Image</span>
+                      <button
+                        onClick={() => {
+                          const link = document.createElement('a');
+                          link.href = receiptDataUrl;
+                          link.download = 'receipt_image.png';
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }}
+                        className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition-colors flex items-center gap-1 cursor-pointer"
+                      >
+                        <Download className="h-3.5 w-3.5" /> Download
+                      </button>
                     </div>
-                    <div className="flex justify-center bg-white rounded-lg p-2 min-h-[200px]">
-                      {receiptDataUrl.startsWith('/api/') || receiptDataUrl.startsWith('http') ? (
-                        <div className="w-full">
-                          {receiptDataUrl.toLowerCase().includes('.pdf') ? (
-                            <embed
-                              src={receiptDataUrl}
-                              type="application/pdf"
-                              className="w-full h-[500px] rounded-lg"
-                            />
-                          ) : (
-                            <img
-                              src={receiptDataUrl}
-                              alt="Payment Receipt"
-                              className="max-w-full max-h-[500px] object-contain rounded-lg mx-auto"
-                              onError={(e) => {
-                                console.error('Image failed to load');
-                                setReceiptError('Failed to load image. Please try downloading the file.');
-                              }}
-                            />
-                          )}
-                        </div>
-                      ) : (
-                        <img
-                          src={receiptDataUrl}
-                          alt="Payment Receipt"
-                          className="max-w-full max-h-[500px] object-contain rounded-lg mx-auto"
-                          onError={(e) => {
-                            console.error('Image failed to load');
-                            setReceiptError('Failed to load image. Please try downloading the file.');
-                          }}
-                        />
-                      )}
+                    <div className="flex justify-center bg-white rounded-lg p-2">
+                      <img
+                        src={receiptDataUrl}
+                        alt="Payment Receipt"
+                        className="max-w-full max-h-[400px] object-contain rounded-lg"
+                        onError={(e) => {
+                          console.error('Image failed to load');
+                          (e.target as HTMLImageElement).style.display = 'none';
+                          const parent = (e.target as HTMLImageElement).parentElement;
+                          if (parent) {
+                            parent.innerHTML = `
+                              <div class="text-center py-8">
+                                <FileText className="h-12 w-12 text-slate-400 mx-auto mb-2" />
+                                <p class="text-slate-500">Unable to display image</p>
+                                <button
+                                  onclick="window.location.reload()"
+                                  class="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm"
+                                >
+                                  Try Again
+                                </button>
+                              </div>
+                            `;
+                          }
+                        }}
+                      />
                     </div>
                   </div>
                 )}
 
-                {allReceiptFiles.length > 0 && !isLoadingReceipt && (
+                {selectedPayment.receiptFiles && selectedPayment.receiptFiles.length > 0 ? (
                   <div className="space-y-3">
-                    {allReceiptFiles.map((file: any, index: number) => {
-                      const isActive = index === selectedReceiptIndex;
+                    {selectedPayment.receiptFiles.map((file: any, index: number) => {
+                      const isImage = file.type?.startsWith('image/');
+                      const hasPreview = file.dataUrl || file.file;
 
                       return (
                         <div
                           key={index}
-                          className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all cursor-pointer ${
-                            isActive
-                              ? 'border-indigo-500 bg-indigo-50'
-                              : `border-slate-200 hover:border-indigo-300 hover:bg-slate-50`
-                          }`}
-                          onClick={() => {
-                            setSelectedReceiptIndex(index);
-                            loadReceiptFile(file);
-                          }}
+                          className={`flex items-center justify-between p-4 rounded-xl border-2 ${getFileColor(file.type)} transition-all hover:shadow-md`}
                         >
                           <div className="flex items-center gap-4 flex-1 min-w-0">
                             <div className="flex-shrink-0">
                               {getFileIcon(file.type)}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-slate-900 truncate">
-                                {file.originalName || file.name || `Receipt ${index + 1}`}
-                              </p>
+                              <p className="text-sm font-medium text-slate-900 truncate">{file.name}</p>
                               <p className="text-xs text-slate-500">
                                 {(file.size / 1024).toFixed(1)} KB • {file.type || 'Unknown type'}
-                                {isActive && ' • Currently viewing'}
                               </p>
                             </div>
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
+                            {isImage && hasPreview && (
+                              <button
+                                onClick={() => {
+                                  if (file.dataUrl) {
+                                    setReceiptDataUrl(file.dataUrl);
+                                  } else if (file.file) {
+                                    loadReceiptFile(file);
+                                  }
+                                }}
+                                className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-colors flex items-center gap-1 cursor-pointer"
+                              >
+                                <Eye className="h-3.5 w-3.5" /> View
+                              </button>
+                            )}
                             <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDownloadReceipt(file);
-                              }}
+                              onClick={() => handleDownloadReceipt(file)}
                               className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition-colors flex items-center gap-1 cursor-pointer"
                             >
                               <Download className="h-3.5 w-3.5" /> Download
@@ -1477,9 +1414,39 @@ Generated receipt for reference.
                       );
                     })}
                   </div>
-                )}
-
-                {allReceiptFiles.length === 0 && !isLoadingReceipt && !receiptError && (
+                ) : selectedPayment.receiptFile ? (
+                  <div className="space-y-3">
+                    <div className={`flex items-center justify-between p-4 rounded-xl border-2 ${getFileColor(selectedPayment.receiptFile.type)} transition-all hover:shadow-md`}>
+                      <div className="flex items-center gap-4 flex-1 min-w-0">
+                        <div className="flex-shrink-0">
+                          {getFileIcon(selectedPayment.receiptFile.type)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-900 truncate">{selectedPayment.receiptFile.name}</p>
+                          <p className="text-xs text-slate-500">
+                            {(selectedPayment.receiptFile.size / 1024).toFixed(1)} KB • {selectedPayment.receiptFile.type || 'Unknown type'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {selectedPayment.receiptFile.type?.startsWith('image/') && (
+                          <button
+                            onClick={() => handleViewReceipt(selectedPayment)}
+                            className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Eye className="h-3.5 w-3.5" /> View
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDownloadReceipt(selectedPayment.receiptFile)}
+                          className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Download className="h-3.5 w-3.5" /> Download
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
                   <div className="text-center py-8 bg-slate-50 rounded-xl border-2 border-dashed border-slate-300">
                     <FileText className="h-12 w-12 text-slate-300 mx-auto mb-2" />
                     <p className="text-sm text-slate-500">No receipt files uploaded</p>
@@ -1488,13 +1455,13 @@ Generated receipt for reference.
                 )}
               </div>
 
+              {/* Action Buttons */}
               <div className="flex gap-3 pt-4 border-t border-slate-200 flex-wrap">
                 <button
                   onClick={() => {
                     setShowReceiptModal(false);
                     setSelectedReceiptFile(null);
                     setReceiptDataUrl(null);
-                    setReceiptError(null);
                     handleApprovePayment(selectedPayment);
                   }}
                   className="flex-1 min-w-[120px] bg-emerald-600 text-white py-2.5 rounded-xl font-semibold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 cursor-pointer"
@@ -1506,7 +1473,6 @@ Generated receipt for reference.
                     setShowReceiptModal(false);
                     setSelectedReceiptFile(null);
                     setReceiptDataUrl(null);
-                    setReceiptError(null);
                     handleRejectPayment(selectedPayment);
                   }}
                   className="flex-1 min-w-[120px] bg-red-500 text-white py-2.5 rounded-xl font-semibold hover:bg-red-600 transition-colors flex items-center justify-center gap-2 cursor-pointer"
@@ -1518,9 +1484,7 @@ Generated receipt for reference.
                     setShowReceiptModal(false);
                     setSelectedReceiptFile(null);
                     setReceiptDataUrl(null);
-                    setReceiptError(null);
                     setIsFullscreen(false);
-                    setAllReceiptFiles([]);
                   }}
                   className="flex-1 min-w-[120px] bg-slate-200 text-slate-700 py-2.5 rounded-xl font-semibold hover:bg-slate-300 transition-colors cursor-pointer"
                 >
@@ -1532,13 +1496,92 @@ Generated receipt for reference.
         </div>
       )}
 
-      {/* APPROVE PAYMENT MODAL - Shows the specific payment */}
+      {/* FILE PREVIEW MODAL */}
+      {selectedReceiptFile && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden">
+            <div className="flex justify-between items-center p-4 border-b border-slate-200">
+              <h4 className="font-semibold text-slate-900 flex items-center gap-2">
+                <Eye className="h-4 w-4 text-indigo-600" />
+                File Preview: {selectedReceiptFile.name || 'Receipt'}
+              </h4>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (selectedReceiptFile.dataUrl) {
+                      const link = document.createElement('a');
+                      link.href = selectedReceiptFile.dataUrl;
+                      link.download = selectedReceiptFile.name || 'receipt';
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    } else {
+                      handleDownloadReceipt(selectedReceiptFile);
+                    }
+                  }}
+                  className="text-emerald-600 hover:text-emerald-700 p-1.5 rounded-lg hover:bg-emerald-50 transition-colors cursor-pointer"
+                  title="Download File"
+                >
+                  <Download className="h-5 w-5" />
+                </button>
+                <button
+                  onClick={() => setSelectedReceiptFile(null)}
+                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[70vh]">
+              {selectedReceiptFile.dataUrl ? (
+                <div className="flex items-center justify-center bg-slate-100 rounded-xl p-4 min-h-[300px]">
+                  {selectedReceiptFile.type?.startsWith('image/') ? (
+                    <img
+                      src={selectedReceiptFile.dataUrl}
+                      alt={selectedReceiptFile.name || 'Receipt'}
+                      className="max-w-full max-h-[500px] object-contain rounded-lg"
+                    />
+                  ) : selectedReceiptFile.type === 'application/pdf' ? (
+                    <embed
+                      src={selectedReceiptFile.dataUrl}
+                      type="application/pdf"
+                      className="w-full h-[500px] rounded-lg"
+                    />
+                  ) : (
+                    <div className="text-center">
+                      <FileText className="h-16 w-16 text-slate-400 mx-auto mb-4" />
+                      <p className="text-slate-500">{selectedReceiptFile.name || 'File'}</p>
+                      <p className="text-sm text-slate-400">Click Download to view</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center bg-slate-100 rounded-xl p-4 min-h-[300px]">
+                  <div className="text-center">
+                    <FileText className="h-16 w-16 text-slate-400 mx-auto mb-4" />
+                    <p className="text-slate-500 mb-2">{selectedReceiptFile.name || 'File'}</p>
+                    <p className="text-sm text-slate-400">{(selectedReceiptFile.size / 1024).toFixed(1)} KB</p>
+                    <button
+                      onClick={() => handleDownloadReceipt(selectedReceiptFile)}
+                      className="mt-4 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors flex items-center gap-2 mx-auto cursor-pointer"
+                    >
+                      <Download className="h-4 w-4" /> Download File
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* APPROVE PAYMENT MODAL */}
       {showModal && modalType === 'approvePayment' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold">Approve Payment</h3>
-              <button onClick={() => { setShowModal(false); setProcessingPaymentId(null); }} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -1570,6 +1613,12 @@ Generated receipt for reference.
                     <span className="font-medium text-indigo-600">{modalData.receiptFiles.length} file(s)</span>
                   </div>
                 )}
+                {modalData.receiptFile && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Receipt:</span>
+                    <span className="font-medium text-indigo-600">1 file</span>
+                  </div>
+                )}
                 {modalData.notes && (
                   <div className="flex justify-between">
                     <span className="text-slate-500">Notes:</span>
@@ -1593,7 +1642,7 @@ Generated receipt for reference.
                   <CheckCircle className="h-4 w-4" /> Approve
                 </button>
                 <button
-                  onClick={() => { setShowModal(false); setProcessingPaymentId(null); }}
+                  onClick={() => setShowModal(false)}
                   className="flex-1 bg-slate-200 text-slate-700 py-3 rounded-xl font-semibold hover:bg-slate-300 transition-colors cursor-pointer"
                 >
                   Cancel
@@ -1715,6 +1764,7 @@ Generated receipt for reference.
                 </div>
               </div>
 
+              {/* Other Fees */}
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <label className="block text-sm font-medium text-slate-700">Other Fees</label>
@@ -1754,6 +1804,7 @@ Generated receipt for reference.
                 ))}
               </div>
 
+              {/* Total */}
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
                 <div className="flex justify-between items-center">
                   <span className="font-semibold text-emerald-800">Total Fees:</span>
