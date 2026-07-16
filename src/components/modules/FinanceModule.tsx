@@ -1,5 +1,5 @@
-// FinanceModule.tsx - Complete Redesigned Version
-import React, { useState, useEffect } from 'react';
+// FinanceModule.tsx - Complete Auto-Refresh Version
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   DollarSign, Coins, TrendingUp, TrendingDown,
   Plus, X, Wallet, CheckCircle, Clock, Search,
@@ -124,7 +124,7 @@ export default function FinanceModule({
   };
 
   // ============ LOAD ALL PAYMENTS ============
-  const loadAllPayments = () => {
+  const loadAllPayments = useCallback(() => {
     try {
       // Load pending payments
       const savedPending = localStorage.getItem('safari_pending_payments');
@@ -154,7 +154,7 @@ export default function FinanceModule({
       setApprovedPayments([]);
       setRejectedPayments([]);
     }
-  };
+  }, [selectedSchool]);
 
   // ============ LOAD FEE STRUCTURES ============
   const loadFeeStructures = () => {
@@ -505,7 +505,7 @@ export default function FinanceModule({
     }
   };
 
-  // ============ APPROVE PAYMENT - BY ID ONLY ============
+  // ============ APPROVE PAYMENT - WITH AUTO REFRESH ============
   const handleApprovePayment = (payment: PaymentRecord) => {
     setModalType('approvePayment');
     setModalData(payment);
@@ -594,7 +594,7 @@ export default function FinanceModule({
       localStorage.setItem('safari_pending_students', JSON.stringify(existingPending));
     }
 
-    // 5. Reload all payments
+    // 5. AUTO REFRESH - Reload all payments
     loadAllPayments();
 
     showNotification(
@@ -605,7 +605,7 @@ export default function FinanceModule({
     setModalData({});
   };
 
-  // ============ REJECT PAYMENT - BY ID ONLY ============
+  // ============ REJECT PAYMENT - WITH AUTO REFRESH ============
   const handleRejectPayment = (payment: PaymentRecord) => {
     setModalData(payment);
     setRejectionReason('');
@@ -639,7 +639,7 @@ export default function FinanceModule({
     allRejected.push(rejectedPayment);
     localStorage.setItem('safari_rejected_payments', JSON.stringify(allRejected));
 
-    // 3. Reload all payments
+    // 3. AUTO REFRESH - Reload all payments
     loadAllPayments();
 
     showNotification(
