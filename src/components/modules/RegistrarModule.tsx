@@ -221,11 +221,17 @@ export default function RegistrarModule({
 
     setIsSubmitting(true);
 
+    // ============================================================
+    // CRITICAL FIX: Generate the student ID FIRST
+    // ============================================================
+    const newStudentId = modalData.studentId || generateStudentId();
+    const newAdmissionNo = modalData.admissionNo || generateAdmissionNo();
+
     // Create the student
     const newStudent = {
       id: `STU-${Date.now().toString().slice(-6)}`,
-      admissionNo: modalData.admissionNo || `ADM${Date.now().toString().slice(-6)}`,
-      studentId: modalData.studentId || generateStudentId(),
+      admissionNo: newAdmissionNo,
+      studentId: newStudentId,
       name: modalData.name.trim(),
       grade: modalData.grade || 'PreKG',
       classSection: modalData.section || 'A',
@@ -251,21 +257,24 @@ export default function RegistrarModule({
     };
 
     // ============================================================
-    // CRITICAL FIX: Generate passwords FIRST
+    // CRITICAL FIX: Generate passwords using the NEW student ID
     // ============================================================
-    const studentPassword = `STU${newStudent.id.slice(-6)}`;
-    const parentPassword = `PAR${newStudent.id.slice(-6)}`;
+    // Use the actual student ID that was assigned
+    const idForPassword = newStudentId.slice(-6); // Get last 6 chars of student ID
+    const studentPassword = `STU${idForPassword}`;
+    const parentPassword = `PAR${idForPassword}`;
 
     console.log('🔑 Generated passwords:', {
       student: { email: newStudent.email, password: studentPassword },
       parent: { email: newStudent.parentEmail, password: parentPassword }
     });
+    console.log('🔑 Using student ID for passwords:', newStudentId);
 
     const createdUsers = [];
     let updatedUsers = [...registeredUsers];
 
     // ============================================================
-    // CRITICAL FIX: Create STUDENT user account with proper saving
+    // Create STUDENT user account with proper saving
     // ============================================================
     if (newStudent.email) {
       const studentExists = updatedUsers.some(
@@ -313,7 +322,7 @@ export default function RegistrarModule({
     }
 
     // ============================================================
-    // CRITICAL FIX: Create PARENT user account with proper saving
+    // Create PARENT user account with proper saving
     // ============================================================
     if (newStudent.parentEmail) {
       const parentExists = updatedUsers.some(
@@ -361,7 +370,7 @@ export default function RegistrarModule({
     }
 
     // ============================================================
-    // CRITICAL FIX: Save to BOTH state AND localStorage
+    // Save to BOTH state AND localStorage
     // ============================================================
 
     // 1. Update state
@@ -369,7 +378,7 @@ export default function RegistrarModule({
       setRegisteredUsers(updatedUsers);
     }
 
-    // 2. Save directly to localStorage (this is the most reliable method)
+    // 2. Save directly to localStorage
     try {
       localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
       console.log('✅ Users saved to localStorage. Total users:', updatedUsers.length);
@@ -417,7 +426,7 @@ export default function RegistrarModule({
     localStorage.setItem('safari_admissions', JSON.stringify(updatedAdmissions));
 
     // ============================================================
-    // CRITICAL FIX: Verify credentials were saved
+    // Verify credentials were saved
     // ============================================================
     const verifyUsers = JSON.parse(localStorage.getItem('safari_registered_users') || '[]');
     console.log('🔍 Verifying saved users:');
@@ -1463,9 +1472,6 @@ export default function RegistrarModule({
                     onChange={(e) => setModalData({ ...modalData, email: e.target.value })}
                     className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 outline-none text-sm"
                   />
-                  <p className="text-xs text-slate-400 mt-1">
-                    Default password: <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded">STU{modalData.id?.slice(-6) || 'XXXXXX'}</span>
-                  </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 mt-3">
@@ -1565,9 +1571,6 @@ export default function RegistrarModule({
                     onChange={(e) => setModalData({ ...modalData, parentEmail: e.target.value })}
                     className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 outline-none text-sm"
                   />
-                  <p className="text-xs text-slate-400 mt-1">
-                    Default password: <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded">PAR{modalData.id?.slice(-6) || 'XXXXXX'}</span>
-                  </p>
                 </div>
               </div>
             </div>
@@ -1577,8 +1580,8 @@ export default function RegistrarModule({
                 <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                 <span>
                   <strong>Login credentials will be automatically created:</strong><br />
-                  Student: <span className="font-mono">{modalData.email || 'student@email.com'}</span> / Password: <span className="font-mono">STU{modalData.id?.slice(-6) || 'XXXXXX'}</span><br />
-                  Parent: <span className="font-mono">{modalData.parentEmail || 'parent@email.com'}</span> / Password: <span className="font-mono">PAR{modalData.id?.slice(-6) || 'XXXXXX'}</span>
+                  Student: <span className="font-mono">{modalData.email || 'student@email.com'}</span> / Password: <span className="font-mono">STU{modalData.studentId?.slice(-6) || 'XXXXXX'}</span><br />
+                  Parent: <span className="font-mono">{modalData.parentEmail || 'parent@email.com'}</span> / Password: <span className="font-mono">PAR{modalData.studentId?.slice(-6) || 'XXXXXX'}</span>
                 </span>
               </p>
             </div>
