@@ -1,4 +1,4 @@
-// PublicWebsite.tsx - Complete Updated Version with Server File Upload
+// PublicWebsite.tsx - Complete Updated Version with All Images
 
 import React, { useState, useRef, useEffect } from 'react';
 import {
@@ -29,7 +29,17 @@ import {
   Image,
   Paperclip,
   Building2,
-  Loader2
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
+  Play,
+  Pause,
+  Heart,
+  Star,
+  Quote,
+  Trophy,
+  Briefcase,
+  Target
 } from 'lucide-react';
 
 interface PublicWebsiteProps {
@@ -69,6 +79,11 @@ export default function PublicWebsite({
   const [selectedGradeFee, setSelectedGradeFee] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
 
+  // Slideshow state
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [isAutoPlaying, setIsAutoPlaying] = useState(true);
+  const slideshowInterval = useRef<NodeJS.Timeout | null>(null);
+
   const [admissionForm, setAdmissionForm] = useState<any>({
     candidateName: '',
     parentName: '',
@@ -80,7 +95,123 @@ export default function PublicWebsite({
     notes: ''
   });
 
-  // Load fee structures on mount and when grade or school changes
+  // ============ IMAGES CONFIGURATION ============
+  const images = {
+    // Required - Non-replaceable
+    logo: '/logo.jpeg',
+
+    // Main Page Images
+    mainPage: '/main page.png',
+    scholarImage: '/scholar image.jpeg',
+    twentyYears: '/20 years of excellence',
+    ourStaff: '/our staff.jpeg',
+
+    // Activity images (from previous)
+    activity1: '/activity 1.jpeg',
+    activity2: '/activity 2.jpeg',
+    ourCommunity: '/our community.jpg',
+  };
+
+  // ============ SLIDESHOW IMAGES ============
+  const slideshowImages = [
+    {
+      src: images.mainPage,
+      alt: 'Main Campus',
+      caption: 'Welcome to Our School',
+      subCaption: 'Where Excellence Meets Opportunity'
+    },
+    {
+      src: images.scholarImage,
+      alt: 'Scholar Image',
+      caption: 'Academic Excellence',
+      subCaption: 'Nurturing Scholars, Building Futures'
+    },
+    {
+      src: images.ourCommunity,
+      alt: 'Our Community',
+      caption: 'Our Community',
+      subCaption: 'A Supportive Family of Learners'
+    },
+    {
+      src: images.ourStaff,
+      alt: 'Our Staff',
+      caption: 'Meet Our Dedicated Staff',
+      subCaption: 'Committed to Student Success'
+    },
+  ];
+
+  // ============ STATS DATA ============
+  const stats = [
+    { value: '500+', label: 'Students', icon: Users },
+    { value: '50+', label: 'Teachers', icon: Users },
+    { value: '20+', label: 'Years of Excellence', icon: Trophy },
+    { value: '15+', label: 'Programs', icon: BookOpen },
+  ];
+
+  // ============ FEATURES DATA ============
+  const features = [
+    {
+      title: 'Academic Excellence',
+      description: 'Rigorous curriculum preparing students for global success.',
+      icon: BookOpen,
+      color: 'emerald'
+    },
+    {
+      title: 'Expert Faculty',
+      description: 'Dedicated teachers committed to student growth and development.',
+      icon: Users,
+      color: 'blue'
+    },
+    {
+      title: 'Holistic Development',
+      description: 'Building character, leadership, and essential life skills.',
+      icon: Award,
+      color: 'amber'
+    },
+    {
+      title: 'Community Spirit',
+      description: 'A supportive environment where every student thrives.',
+      icon: Heart,
+      color: 'rose'
+    },
+  ];
+
+  // ============ AUTO-PLAY SLIDESHOW ============
+  useEffect(() => {
+    if (isAutoPlaying) {
+      slideshowInterval.current = setInterval(() => {
+        setCurrentSlide((prev) => (prev + 1) % slideshowImages.length);
+      }, 5000);
+    }
+    return () => {
+      if (slideshowInterval.current) {
+        clearInterval(slideshowInterval.current);
+      }
+    };
+  }, [isAutoPlaying]);
+
+  const nextSlide = () => {
+    setCurrentSlide((prev) => (prev + 1) % slideshowImages.length);
+    resetAutoPlay();
+  };
+
+  const prevSlide = () => {
+    setCurrentSlide((prev) => (prev - 1 + slideshowImages.length) % slideshowImages.length);
+    resetAutoPlay();
+  };
+
+  const resetAutoPlay = () => {
+    if (slideshowInterval.current) {
+      clearInterval(slideshowInterval.current);
+    }
+    if (isAutoPlaying) {
+      slideshowInterval.current = setInterval(() => {
+        setCurrentSlide((prev) => (prev + 1) % slideshowImages.length);
+      }, 5000);
+    }
+  };
+
+  // ============ LOAD FEE STRUCTURES ============
   useEffect(() => {
     loadFeeStructures();
   }, []);
@@ -121,7 +252,7 @@ export default function PublicWebsite({
     }
   };
 
-  // ============ FILE UPLOAD TO SERVER ============
+  // ============ FILE UPLOAD FUNCTIONS ============
   const uploadReceiptsToServer = async (files: File[]): Promise<any[]> => {
     const formData = new FormData();
     files.forEach(file => {
@@ -157,12 +288,10 @@ export default function PublicWebsite({
     }
   };
 
-  // ============ FILE UPLOAD HANDLER ============
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const files = Array.from(e.target.files);
 
-      // Validate file size (max 5MB each)
       const validFiles = files.filter(file => {
         if (file.size > 5 * 1024 * 1024) {
           alert(`File ${file.name} exceeds 5MB limit.`);
@@ -171,7 +300,6 @@ export default function PublicWebsite({
         return true;
       });
 
-      // Validate file types
       const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
       const validTypes = validFiles.filter(file => {
         if (!allowedTypes.includes(file.type)) {
@@ -196,20 +324,17 @@ export default function PublicWebsite({
         receiptFiles: [...(prev.receiptFiles || []), ...fileObjects]
       }));
 
-      // Auto-upload files to server
       if (validTypes.length > 0) {
         uploadFilesToServer(validTypes);
       }
     }
   };
 
-  // ============ UPLOAD FILES TO SERVER ============
   const uploadFilesToServer = async (files: File[]) => {
     try {
       setIsUploading(true);
       const uploaded = await uploadReceiptsToServer(files);
 
-      // Update receipt files with server response
       setAdmissionForm((prev: any) => ({
         ...prev,
         receiptFiles: prev.receiptFiles.map((f: any) => {
@@ -245,11 +370,9 @@ export default function PublicWebsite({
     }
   };
 
-  // ============ REMOVE FILE ============
   const removeFile = (index: number) => {
     const fileToRemove = admissionForm.receiptFiles[index];
 
-    // If file was uploaded to server, delete it
     if (fileToRemove && fileToRemove.storedName) {
       fetch(`/api/receipts/file/${fileToRemove.storedName}`, {
         method: 'DELETE'
@@ -267,7 +390,6 @@ export default function PublicWebsite({
     e.preventDefault();
     setIsSubmitting(true);
 
-    // Validate required fields
     if (!admissionForm.candidateName.trim()) {
       alert('Candidate name is required!');
       setIsSubmitting(false);
@@ -289,7 +411,6 @@ export default function PublicWebsite({
       return;
     }
 
-    // Check if files are uploaded
     const hasUploadedFiles = admissionForm.receiptFiles.some((f: any) =>
       f.uploadStatus === 'uploaded' || f.storedName || f.url
     );
@@ -301,7 +422,6 @@ export default function PublicWebsite({
     }
 
     try {
-      // Get fee amount
       let feeAmount = 0;
       try {
         const fee = feeStructures.find((f: any) => {
@@ -317,7 +437,6 @@ export default function PublicWebsite({
       const selectedSchool = schools.find((s: any) => s.id === admissionForm.schoolId);
       const schoolName = selectedSchool ? selectedSchool.name : '';
 
-      // Prepare file data for storage
       const fileData = admissionForm.receiptFiles
         .filter((f: any) => f.uploadStatus === 'uploaded' || f.storedName)
         .map((f: any) => ({
@@ -347,11 +466,9 @@ export default function PublicWebsite({
         approvedByFinance: false
       };
 
-      // Save admission
       onAddAdmission(newAdmission);
       setAdmissionSuccess(true);
 
-      // Reset form
       setAdmissionForm({
         candidateName: '',
         parentName: '',
@@ -377,16 +494,12 @@ export default function PublicWebsite({
     }
   };
 
-  // ============ SHOW NOTIFICATION ============
   const showNotification = (message: string, type: 'success' | 'error' | 'info') => {
     console.log(`[${type}] ${message}`);
-    // You can implement a proper notification system here
   };
 
-  // Get active schools
   const activeSchools = schools.filter((s: any) => s.status === 'active');
 
-  // ============ GET FILE ICON ============
   const getFileIcon = (fileType: string) => {
     if (fileType?.startsWith('image/')) {
       return <Image className="h-5 w-5 text-indigo-500" />;
@@ -412,8 +525,10 @@ export default function PublicWebsite({
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
-      {/* Top Bar */}
-      <div className="bg-slate-900 text-slate-300 text-sm px-6 py-3 flex justify-between items-center">
+      {/* ============================================================ */}
+      {/* TOP BAR */}
+      {/* ============================================================ */}
+      <div className="bg-slate-900 text-slate-300 text-sm px-6 py-3 flex justify-between items-center flex-wrap gap-2">
         <div className="flex items-center gap-6 flex-wrap">
           <span className="flex items-center gap-2">
             <MapPin className="h-4 w-4 text-emerald-400" /> {schoolConfig.location}
@@ -433,16 +548,35 @@ export default function PublicWebsite({
         </button>
       </div>
 
-      {/* Navbar */}
+      {/* ============================================================ */}
+      {/* NAVBAR WITH LOGO */}
+      {/* ============================================================ */}
       <nav className="bg-white shadow-sm sticky top-0 z-40 border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <div className="bg-slate-900 p-2 rounded-xl">
-              <GraduationCap className="h-8 w-8 text-emerald-400" />
-            </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center flex-wrap gap-4">
+          <div className="flex items-center gap-3">
+            {/* Logo - MUST USE logo.jpeg */}
+            <img
+              src={images.logo}
+              alt={`${schoolConfig.name} Logo`}
+              className="h-12 w-12 object-contain rounded-lg"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+                const parent = (e.target as HTMLImageElement).parentElement;
+                if (parent) {
+                  parent.innerHTML = `
+                    <div class="bg-slate-900 p-2 rounded-xl">
+                      <svg class="h-8 w-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" />
+                      </svg>
+                    </div>
+                  `;
+                }
+              }}
+            />
             <div>
               <h1 className="text-xl font-bold text-slate-900">{schoolConfig.name}</h1>
-              <p className="text-xs text-emerald-600 font-semibold">Excellence in Education</p>
+              <p className="text-xs text-emerald-600 font-semibold">20 Years of Excellence</p>
             </div>
           </div>
           <div className="flex gap-6 text-sm font-medium">
@@ -469,53 +603,248 @@ export default function PublicWebsite({
         </div>
       </nav>
 
-      {/* Hero Section */}
+      {/* ============================================================ */}
+      {/* HERO SECTION WITH SLIDESHOW */}
+      {/* ============================================================ */}
       {activeTab === 'home' && (
-        <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white py-20">
-          <div className="max-w-6xl mx-auto px-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
-              <div>
-                <h1 className="text-5xl font-extrabold mb-6 leading-tight">
-                  {schoolConfig.heroTitle || 'Empowering Future Leaders'}
-                </h1>
-                <p className="text-slate-300 text-lg mb-8">
-                  {schoolConfig.heroSubtitle || 'Welcome to our school, where academic excellence meets holistic development.'}
-                </p>
-                <div className="flex flex-wrap gap-4">
-                  <button
-                    onClick={() => setShowAdmissionModal(true)}
-                    className="bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-6 py-3 rounded-xl font-semibold transition-colors flex items-center gap-2 cursor-pointer"
-                  >
-                    Apply Now <ArrowRight className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => setShowPaymentModal(true)}
-                    className="border border-white/30 hover:bg-white/10 px-6 py-3 rounded-xl font-semibold transition-colors flex items-center gap-2 cursor-pointer"
-                  >
-                    Pay Tuition <DollarSign className="h-4 w-4" />
-                  </button>
+        <div className="relative bg-gradient-to-r from-slate-900 to-slate-800 text-white">
+          <div className="relative h-[550px] md:h-[650px] overflow-hidden">
+            {slideshowImages.map((image, index) => (
+              <div
+                key={index}
+                className={`absolute inset-0 transition-opacity duration-1000 ${
+                  currentSlide === index ? 'opacity-100' : 'opacity-0'
+                }`}
+              >
+                <img
+                  src={image.src}
+                  alt={image.alt}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                    const parent = (e.target as HTMLImageElement).parentElement;
+                    if (parent) {
+                      parent.innerHTML = `
+                        <div class="w-full h-full bg-gradient-to-r from-slate-800 to-slate-900 flex items-center justify-center">
+                          <div class="text-center p-8">
+                            <GraduationCap class="h-20 w-20 text-emerald-400 mx-auto mb-4" />
+                            <h2 class="text-3xl font-bold text-white">${image.caption}</h2>
+                            <p class="text-slate-300 mt-2">${image.subCaption || schoolConfig.heroSubtitle || 'Excellence in Education'}</p>
+                          </div>
+                        </div>
+                      `;
+                    }
+                  }}
+                />
+                <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/40 to-transparent" />
+
+                <div className="absolute inset-0 flex items-center">
+                  <div className="max-w-6xl mx-auto px-4 w-full">
+                    <div className="max-w-2xl">
+                      <div className="inline-block bg-emerald-500/20 backdrop-blur-sm px-4 py-1 rounded-full mb-4 border border-emerald-500/30">
+                        <span className="text-emerald-300 text-sm font-semibold">20 Years of Excellence</span>
+                      </div>
+                      <h2 className="text-4xl md:text-6xl font-extrabold mb-4 leading-tight">
+                        {image.caption}
+                      </h2>
+                      <p className="text-slate-200 text-lg mb-8">
+                        {image.subCaption || schoolConfig.heroSubtitle || 'Welcome to our school, where academic excellence meets holistic development.'}
+                      </p>
+                      <div className="flex flex-wrap gap-4">
+                        <button
+                          onClick={() => setShowAdmissionModal(true)}
+                          className="bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-6 py-3 rounded-xl font-semibold transition-colors flex items-center gap-2 cursor-pointer"
+                        >
+                          Apply Now <ArrowRight className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => setShowPaymentModal(true)}
+                          className="border border-white/30 hover:bg-white/10 px-6 py-3 rounded-xl font-semibold transition-colors flex items-center gap-2 cursor-pointer"
+                        >
+                          Pay Tuition <DollarSign className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white/10 p-6 rounded-2xl backdrop-blur-sm">
-                  <BookOpen className="h-8 w-8 text-emerald-400 mb-3" />
-                  <h3 className="font-bold">Academic Excellence</h3>
-                  <p className="text-sm text-slate-300">Rigorous curriculum preparing students for global success.</p>
+            ))}
+
+            {/* Slideshow Controls */}
+            <button
+              onClick={prevSlide}
+              className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-colors z-10"
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+            <button
+              onClick={nextSlide}
+              className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-colors z-10"
+            >
+              <ChevronRight className="h-6 w-6" />
+            </button>
+
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-10">
+              {slideshowImages.map((_, index) => (
+                <button
+                  key={index}
+                  onClick={() => {
+                    setCurrentSlide(index);
+                    resetAutoPlay();
+                  }}
+                  className={`w-3 h-3 rounded-full transition-all ${
+                    currentSlide === index
+                      ? 'bg-emerald-500 w-8'
+                      : 'bg-white/50 hover:bg-white/80'
+                  }`}
+                />
+              ))}
+            </div>
+
+            <button
+              onClick={() => {
+                setIsAutoPlaying(!isAutoPlaying);
+                if (isAutoPlaying && slideshowInterval.current) {
+                  clearInterval(slideshowInterval.current);
+                } else {
+                  resetAutoPlay();
+                }
+              }}
+              className="absolute bottom-6 right-6 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-colors z-10"
+            >
+              {isAutoPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+            </button>
+          </div>
+
+          {/* Stats Bar with 20 Years Banner */}
+          <div className="bg-white/10 backdrop-blur-sm border-t border-white/10 py-4">
+            <div className="max-w-6xl mx-auto px-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {stats.map((stat, index) => (
+                  <div key={index} className="text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <stat.icon className="h-5 w-5 text-emerald-400" />
+                      <p className="text-2xl font-bold text-white">{stat.value}</p>
+                    </div>
+                    <p className="text-sm text-slate-300">{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* FEATURES SECTION - 20 Years Banner */}
+      {/* ============================================================ */}
+      {activeTab === 'home' && (
+        <div className="max-w-6xl mx-auto px-4 py-16">
+          <div className="bg-gradient-to-r from-emerald-600 to-emerald-800 rounded-3xl p-8 mb-12 text-white text-center">
+            <div className="flex items-center justify-center gap-4 mb-4">
+              <Trophy className="h-12 w-12 text-emerald-300" />
+              <h2 className="text-3xl md:text-4xl font-bold">20 Years of Excellence</h2>
+            </div>
+            <p className="text-emerald-100 max-w-2xl mx-auto">
+              For two decades, we have been shaping minds, building character, and creating leaders.
+              Our commitment to quality education remains unwavering.
+            </p>
+            <div className="flex justify-center gap-8 mt-6">
+              <div className="text-center">
+                <p className="text-3xl font-bold">500+</p>
+                <p className="text-sm text-emerald-200">Students</p>
+              </div>
+              <div className="text-center">
+                <p className="text-3xl font-bold">50+</p>
+                <p className="text-sm text-emerald-200">Teachers</p>
+              </div>
+              <div className="text-center">
+                <p className="text-3xl font-bold">20</p>
+                <p className="text-sm text-emerald-200">Years</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Features Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {features.map((feature, index) => {
+              const colorClasses = {
+                emerald: 'bg-emerald-100 text-emerald-600',
+                blue: 'bg-blue-100 text-blue-600',
+                amber: 'bg-amber-100 text-amber-600',
+                rose: 'bg-rose-100 text-rose-600'
+              };
+              return (
+                <div key={index} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
+                  <div className={`p-3 rounded-xl w-fit ${colorClasses[feature.color as keyof typeof colorClasses]}`}>
+                    <feature.icon className="h-6 w-6" />
+                  </div>
+                  <h3 className="font-bold text-slate-900 mt-4">{feature.title}</h3>
+                  <p className="text-sm text-slate-500 mt-2">{feature.description}</p>
                 </div>
-                <div className="bg-white/10 p-6 rounded-2xl backdrop-blur-sm">
-                  <Users className="h-8 w-8 text-indigo-400 mb-3" />
-                  <h3 className="font-bold">Expert Faculty</h3>
-                  <p className="text-sm text-slate-300">Dedicated teachers committed to student growth.</p>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* ACTIVITY HIGHLIGHTS - Image Grid */}
+      {/* ============================================================ */}
+      {activeTab === 'home' && (
+        <div className="max-w-6xl mx-auto px-4 py-16 bg-white rounded-3xl shadow-sm border border-slate-200">
+          <h2 className="text-3xl font-bold text-center text-slate-900 mb-4">
+            Our School in Action
+          </h2>
+          <p className="text-center text-slate-500 mb-8 max-w-2xl mx-auto">
+            Explore the vibrant life and activities at our school
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="relative group overflow-hidden rounded-2xl shadow-lg">
+              <img
+                src={images.activity1}
+                alt="School Activity 1"
+                className="w-full h-64 object-cover transition-transform duration-300 group-hover:scale-105"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1580582932707-520aed937b7b?auto=format&fit=crop&w=800&q=80';
+                }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end p-6">
+                <div>
+                  <h3 className="text-white font-bold text-xl">Learning & Discovery</h3>
+                  <p className="text-slate-200 text-sm">Hands-on activities that inspire curiosity</p>
                 </div>
-                <div className="bg-white/10 p-6 rounded-2xl backdrop-blur-sm">
-                  <Award className="h-8 w-8 text-amber-400 mb-3" />
-                  <h3 className="font-bold">Holistic Development</h3>
-                  <p className="text-sm text-slate-300">Building character, leadership, and life skills.</p>
+              </div>
+            </div>
+            <div className="relative group overflow-hidden rounded-2xl shadow-lg">
+              <img
+                src={images.activity2}
+                alt="School Activity 2"
+                className="w-full h-64 object-cover transition-transform duration-300 group-hover:scale-105"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1588072432836-f100ac6f9e5a?auto=format&fit=crop&w=800&q=80';
+                }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end p-6">
+                <div>
+                  <h3 className="text-white font-bold text-xl">Community & Growth</h3>
+                  <p className="text-slate-200 text-sm">Building character and lifelong skills</p>
                 </div>
-                <div className="bg-white/10 p-6 rounded-2xl backdrop-blur-sm">
-                  <Users className="h-8 w-8 text-rose-400 mb-3" />
-                  <h3 className="font-bold">Community</h3>
-                  <p className="text-sm text-slate-300">A supportive environment for every student.</p>
+              </div>
+            </div>
+            <div className="relative group overflow-hidden rounded-2xl shadow-lg">
+              <img
+                src={images.ourCommunity}
+                alt="Our Community"
+                className="w-full h-64 object-cover transition-transform duration-300 group-hover:scale-105"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?auto=format&fit=crop&w=800&q=80';
+                }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end p-6">
+                <div>
+                  <h3 className="text-white font-bold text-xl">Our Community</h3>
+                  <p className="text-slate-200 text-sm">A supportive family of learners</p>
                 </div>
               </div>
             </div>
@@ -523,25 +852,68 @@ export default function PublicWebsite({
         </div>
       )}
 
-      {/* About Section */}
+      {/* ============================================================ */}
+      {/* ABOUT SECTION */}
+      {/* ============================================================ */}
       {activeTab === 'about' && (
         <div className="max-w-6xl mx-auto px-4 py-16">
           <h2 className="text-3xl font-bold mb-8 text-slate-900">About {schoolConfig.name}</h2>
-          <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-            <p className="text-slate-600 leading-relaxed mb-6">
-              {schoolConfig.name} is a premier educational institution dedicated to nurturing the leaders of tomorrow.
-              Our commitment to academic excellence, character development, and innovation sets us apart.
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+          {/* 20 Years Banner */}
+          <div className="bg-gradient-to-r from-amber-500 to-amber-700 rounded-2xl p-6 mb-8 text-white flex items-center gap-4">
+            <Trophy className="h-12 w-12 text-amber-200" />
+            <div>
+              <h3 className="text-2xl font-bold">20 Years of Excellence</h3>
+              <p className="text-amber-100">Celebrating two decades of shaping future leaders</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
+              <img
+                src={images.scholarImage}
+                alt="Scholar"
+                className="w-full h-64 object-cover rounded-xl mb-6"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=800&q=80';
+                }}
+              />
+              <p className="text-slate-600 leading-relaxed">
+                {schoolConfig.name} is a premier educational institution dedicated to nurturing the leaders of tomorrow.
+                Our commitment to academic excellence, character development, and innovation sets us apart.
+              </p>
+            </div>
+            <div className="space-y-6">
+              {/* Staff Image */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <img
+                  src={images.ourStaff}
+                  alt="Our Staff"
+                  className="w-full h-48 object-cover rounded-xl mb-4"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?auto=format&fit=crop&w=800&q=80';
+                  }}
+                />
+                <h4 className="font-bold text-slate-900">Our Dedicated Staff</h4>
+                <p className="text-sm text-slate-600">Committed to student success and well-being</p>
+              </div>
+
               {principals.map((p: any) => (
-                <div key={p.id} className="bg-slate-50 p-6 rounded-xl">
-                  <h4 className="font-bold text-slate-900">{p.letterTitle}</h4>
-                  <p className="text-sm text-slate-600 mt-2">{p.letterBody}</p>
-                  <p className="text-sm font-semibold text-slate-900 mt-3">- {p.name}</p>
+                <div key={p.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                  <div className="flex items-start gap-4">
+                    <div className="p-3 bg-emerald-100 rounded-xl">
+                      <Quote className="h-6 w-6 text-emerald-600" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-slate-900">{p.letterTitle}</h4>
+                      <p className="text-sm text-slate-600 mt-2">{p.letterBody}</p>
+                      <p className="text-sm font-semibold text-slate-900 mt-3">- {p.name}</p>
+                    </div>
+                  </div>
                 </div>
               ))}
               {principals.length === 0 && (
-                <div className="bg-slate-50 p-6 rounded-xl">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                   <p className="text-slate-500">Principal's message coming soon.</p>
                 </div>
               )}
@@ -550,7 +922,9 @@ export default function PublicWebsite({
         </div>
       )}
 
-      {/* Contact Section */}
+      {/* ============================================================ */}
+      {/* CONTACT SECTION */}
+      {/* ============================================================ */}
       {activeTab === 'contact' && (
         <div className="max-w-6xl mx-auto px-4 py-16">
           <h2 className="text-3xl font-bold mb-8 text-slate-900">Contact Us</h2>
@@ -558,24 +932,32 @@ export default function PublicWebsite({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-4">
                 <div className="flex items-start gap-3">
-                  <MapPin className="h-5 w-5 text-slate-400 mt-1" />
+                  <MapPin className="h-5 w-5 text-emerald-500 mt-1" />
                   <div>
                     <p className="font-semibold">Address</p>
                     <p className="text-sm text-slate-600">{schoolConfig.location}</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
-                  <Phone className="h-5 w-5 text-slate-400 mt-1" />
+                  <Phone className="h-5 w-5 text-emerald-500 mt-1" />
                   <div>
                     <p className="font-semibold">Phone</p>
                     <p className="text-sm text-slate-600">{schoolConfig.phone}</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
-                  <Mail className="h-5 w-5 text-slate-400 mt-1" />
+                  <Mail className="h-5 w-5 text-emerald-500 mt-1" />
                   <div>
                     <p className="font-semibold">Email</p>
                     <p className="text-sm text-slate-600">{schoolConfig.email}</p>
+                  </div>
+                </div>
+                {/* 20 Years Badge */}
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
+                  <Trophy className="h-8 w-8 text-amber-500" />
+                  <div>
+                    <p className="font-bold text-amber-700">20 Years of Excellence</p>
+                    <p className="text-sm text-amber-600">Serving our community since 2004</p>
                   </div>
                 </div>
               </div>
@@ -585,19 +967,19 @@ export default function PublicWebsite({
                   <input
                     type="text"
                     placeholder="Your Name"
-                    className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
                   <input
                     type="email"
                     placeholder="Your Email"
-                    className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
                   <textarea
                     placeholder="Your Message"
                     rows={4}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
-                  <button className="bg-slate-900 text-white px-6 py-3 rounded-xl font-semibold hover:bg-slate-800 transition-colors cursor-pointer">
+                  <button className="bg-emerald-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-emerald-700 transition-colors cursor-pointer">
                     Send Message
                   </button>
                 </form>
@@ -607,12 +989,32 @@ export default function PublicWebsite({
         </div>
       )}
 
-      {/* Admissions Section */}
+      {/* ============================================================ */}
+      {/* ADMISSIONS SECTION */}
+      {/* ============================================================ */}
       {activeTab === 'admissions' && (
         <div className="max-w-6xl mx-auto px-4 py-16">
           <h2 className="text-3xl font-bold mb-8 text-slate-900">Admissions</h2>
+
+          {/* 20 Years Banner */}
+          <div className="bg-gradient-to-r from-emerald-500 to-emerald-700 rounded-2xl p-4 mb-8 text-white flex items-center gap-4">
+            <Target className="h-10 w-10 text-emerald-200" />
+            <div>
+              <h3 className="text-xl font-bold">Join Our Legacy of Excellence</h3>
+              <p className="text-emerald-100">Be part of our 20-year journey of shaping future leaders</p>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
+              <img
+                src={images.mainPage}
+                alt="Admissions"
+                className="w-full h-48 object-cover rounded-xl mb-6"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1580582932707-520aed937b7b?auto=format&fit=crop&w=800&q=80';
+                }}
+              />
               <p className="text-slate-600 mb-6">Join our community of learners. Apply now for the upcoming academic year.</p>
 
               {admissionSuccess ? (
@@ -627,7 +1029,7 @@ export default function PublicWebsite({
               ) : (
                 <button
                   onClick={() => setShowAdmissionModal(true)}
-                  className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-semibold hover:bg-indigo-700 transition-colors cursor-pointer"
+                  className="bg-emerald-600 text-white px-8 py-3 rounded-xl font-semibold hover:bg-emerald-700 transition-colors cursor-pointer"
                 >
                   Start Application
                 </button>
@@ -661,13 +1063,23 @@ export default function PublicWebsite({
                   </li>
                 </ul>
               </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <div className="flex items-center gap-3">
+                  <Trophy className="h-6 w-6 text-amber-500" />
+                  <div>
+                    <p className="font-bold text-amber-700 text-sm">20 Years of Excellence</p>
+                    <p className="text-xs text-amber-600">Join our legacy</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {/* ============================================================ */}
-      {/* ADMISSION MODAL - WITH SERVER FILE UPLOAD */}
+      {/* ADMISSION MODAL */}
       {/* ============================================================ */}
       {showAdmissionModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -703,7 +1115,7 @@ export default function PublicWebsite({
                   <input
                     required
                     placeholder="Full name"
-                    className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
                     value={admissionForm.candidateName}
                     onChange={(e) => setAdmissionForm({...admissionForm, candidateName: e.target.value})}
                   />
@@ -716,7 +1128,7 @@ export default function PublicWebsite({
                   <input
                     required
                     placeholder="Parent/Guardian name"
-                    className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
                     value={admissionForm.parentName}
                     onChange={(e) => setAdmissionForm({...admissionForm, parentName: e.target.value})}
                   />
@@ -730,7 +1142,7 @@ export default function PublicWebsite({
                     required
                     type="email"
                     placeholder="email@example.com"
-                    className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
                     value={admissionForm.email}
                     onChange={(e) => setAdmissionForm({...admissionForm, email: e.target.value})}
                   />
@@ -743,7 +1155,7 @@ export default function PublicWebsite({
                   <input
                     type="tel"
                     placeholder="+251 9XX XXX XXX"
-                    className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
                     value={admissionForm.phone}
                     onChange={(e) => setAdmissionForm({...admissionForm, phone: e.target.value})}
                   />
@@ -754,7 +1166,7 @@ export default function PublicWebsite({
                     Grade Applying For *
                   </label>
                   <select
-                    className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
                     value={admissionForm.gradeApplied}
                     onChange={(e) => {
                       setAdmissionForm({...admissionForm, gradeApplied: e.target.value});
@@ -766,7 +1178,6 @@ export default function PublicWebsite({
                   </select>
                 </div>
 
-                {/* School Selection */}
                 {schools && schools.length > 0 && (
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -774,7 +1185,7 @@ export default function PublicWebsite({
                     </label>
                     <select
                       required
-                      className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
                       value={admissionForm.schoolId}
                       onChange={(e) => {
                         setAdmissionForm({...admissionForm, schoolId: e.target.value});
@@ -788,7 +1199,6 @@ export default function PublicWebsite({
                   </div>
                 )}
 
-                {/* Fee Amount Display */}
                 {admissionForm.schoolId && (
                   <div className={`p-4 rounded-xl ${selectedGradeFee > 0 ? 'bg-emerald-50 border border-emerald-200' : 'bg-slate-50 border border-slate-200'}`}>
                     <div className="flex justify-between items-center">
@@ -805,9 +1215,6 @@ export default function PublicWebsite({
                   </div>
                 )}
 
-                {/* ============================================================ */}
-                {/* FILE UPLOAD SECTION WITH SERVER STORAGE */}
-                {/* ============================================================ */}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
                     Upload Payment Receipt *
@@ -816,7 +1223,7 @@ export default function PublicWebsite({
 
                   <div
                     className={`border-2 border-dashed rounded-xl p-4 text-center transition-colors cursor-pointer ${
-                      isUploading ? 'border-blue-400 bg-blue-50' : 'border-slate-300 hover:border-indigo-400'
+                      isUploading ? 'border-blue-400 bg-blue-50' : 'border-slate-300 hover:border-emerald-400'
                     }`}
                     onClick={() => !isUploading && fileInputRef.current?.click()}
                   >
@@ -843,14 +1250,13 @@ export default function PublicWebsite({
                       </div>
                     ) : (
                       <>
-                        <Upload className="h-8 w-8 text-indigo-400 mx-auto mb-2" />
+                        <Upload className="h-8 w-8 text-emerald-400 mx-auto mb-2" />
                         <p className="text-sm text-slate-600">Click or drag to upload receipt</p>
                         <p className="text-xs text-slate-400 mt-1">Supported: JPEG, PNG, PDF (Max 5MB each)</p>
                       </>
                     )}
                   </div>
 
-                  {/* File List with Status */}
                   {admissionForm.receiptFiles.length > 0 && (
                     <div className="mt-3 space-y-2">
                       {admissionForm.receiptFiles.map((f: any, i: number) => (
@@ -874,7 +1280,6 @@ export default function PublicWebsite({
                         </div>
                       ))}
 
-                      {/* Uploaded files summary */}
                       {uploadedFiles.length > 0 && (
                         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-xs text-emerald-700">
                           ✓ {uploadedFiles.length} file(s) uploaded to server successfully
@@ -891,17 +1296,16 @@ export default function PublicWebsite({
                   <textarea
                     rows={2}
                     placeholder="Any additional information..."
-                    className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
                     value={admissionForm.notes}
                     onChange={(e) => setAdmissionForm({...admissionForm, notes: e.target.value})}
                   />
                 </div>
 
-                {/* Submit Button */}
                 <button
                   type="submit"
                   disabled={isSubmitting || isUploading}
-                  className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2"
+                  className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2"
                 >
                   {isSubmitting ? (
                     <>
@@ -925,7 +1329,9 @@ export default function PublicWebsite({
         </div>
       )}
 
-      {/* Payment Modal */}
+      {/* ============================================================ */}
+      {/* PAYMENT MODAL */}
+      {/* ============================================================ */}
       {showPaymentModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-3xl p-8 max-w-md w-full">
@@ -971,11 +1377,26 @@ export default function PublicWebsite({
         </div>
       )}
 
-      {/* Footer */}
+      {/* ============================================================ */}
+      {/* FOOTER */}
+      {/* ============================================================ */}
       <footer className="bg-slate-900 text-slate-400 px-8 py-12 mt-12">
         <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-8">
           <div>
-            <h4 className="text-white font-bold mb-4">{schoolConfig.name}</h4>
+            <div className="flex items-center gap-3 mb-4">
+              <img
+                src={images.logo}
+                alt="Logo"
+                className="h-10 w-10 object-contain"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+              <div>
+                <h4 className="text-white font-bold">{schoolConfig.name}</h4>
+                <p className="text-xs text-emerald-400">20 Years of Excellence</p>
+              </div>
+            </div>
             <p className="text-sm">Excellence in Education</p>
           </div>
           <div>
@@ -994,10 +1415,14 @@ export default function PublicWebsite({
           <div>
             <h4 className="text-white font-bold mb-4">Follow Us</h4>
             <p className="text-sm">Stay connected for updates</p>
+            <div className="mt-2 flex items-center gap-2">
+              <Trophy className="h-5 w-5 text-amber-400" />
+              <span className="text-sm text-amber-400">20 Years Strong</span>
+            </div>
           </div>
         </div>
         <div className="max-w-6xl mx-auto border-t border-slate-800 mt-8 pt-8 text-center text-sm">
-          © 2024 {schoolConfig.name}. All rights reserved.
+          © 2024 {schoolConfig.name}. All rights reserved. | 20 Years of Excellence
         </div>
       </footer>
     </div>

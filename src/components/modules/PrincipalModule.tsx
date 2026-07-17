@@ -1,4 +1,4 @@
-// PrincipalModule.tsx - Complete Fixed Version with Credentials Fix
+// PrincipalModule.tsx - Complete Version with All Roles
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -62,42 +62,88 @@ const DEPARTMENTS = [
   'General'
 ];
 
-// Staff roles with their corresponding system roles
+// ============================================================
+// STAFF ROLES AND SYSTEM ROLE MAPPING - COMPLETE LIST
+// ============================================================
 const STAFF_ROLES = [
+  // Administrative Roles
   'Registrar',
   'Finance Officer',
+  'Vice Principal',
+  'Administrative',
+  'HR Officer',
+  'Receptionist',
+
+  // Academic Support
   'Librarian',
   'Clinic Nurse',
   'Counselor',
+
+  // Operations
   'Transport Manager',
   'Driver',
   'Cafeteria Manager',
   'Alumni Coordinator',
+
+  // Technical & Support
   'IT Support',
-  'Receptionist',
   'Security Officer',
   'Maintenance Staff',
-  'HR Officer',
   'Inventory Manager'
 ];
 
-// Map staff roles to system roles
-const STAFF_ROLE_MAP: Record<string, string> = {
+// ============================================================
+// COMPLETE STAFF TO SYSTEM ROLE MAPPING
+// ============================================================
+const STAFF_ROLE_TO_SYSTEM_ROLE: Record<string, string> = {
+  // Administrative
   'Registrar': 'registrar',
   'Finance Officer': 'finance',
+  'Finance': 'finance',
+  'Vice Principal': 'vice_principal',
+  'Administrative': 'staff',
+  'HR Officer': 'staff',
+  'Receptionist': 'staff',
+
+  // Academic Support
   'Librarian': 'librarian',
   'Clinic Nurse': 'clinic',
   'Counselor': 'counselor',
+
+  // Operations
   'Transport Manager': 'transport',
   'Driver': 'driver',
   'Cafeteria Manager': 'cafeteria',
   'Alumni Coordinator': 'alumni',
+
+  // Technical & Support
   'IT Support': 'staff',
-  'Receptionist': 'staff',
   'Security Officer': 'staff',
   'Maintenance Staff': 'staff',
-  'HR Officer': 'staff',
   'Inventory Manager': 'staff'
+};
+
+// ============================================================
+// SYSTEM ROLES WITH DISPLAY NAMES
+// ============================================================
+const SYSTEM_ROLE_DISPLAY: Record<string, string> = {
+  'super_admin': 'Super Admin',
+  'admin': 'Admin',
+  'principal': 'Principal',
+  'vice_principal': 'Vice Principal',
+  'registrar': 'Registrar',
+  'finance': 'Finance Officer',
+  'librarian': 'Librarian',
+  'clinic': 'Clinic Nurse',
+  'counselor': 'Counselor',
+  'transport': 'Transport Manager',
+  'driver': 'Driver',
+  'cafeteria': 'Cafeteria Manager',
+  'alumni': 'Alumni Coordinator',
+  'teacher': 'Teacher',
+  'student': 'Student',
+  'parent': 'Parent',
+  'staff': 'Staff'
 };
 
 export default function PrincipalModule({
@@ -168,7 +214,9 @@ export default function PrincipalModule({
     }
   });
 
-  // Get parents for this school with real linked students
+  // ============================================================
+  // GET PARENTS FOR THIS SCHOOL
+  // ============================================================
   const getSchoolParents = () => {
     const schoolParents = registeredUsers.filter((u: any) => {
       if (u.role !== 'parent') return false;
@@ -201,7 +249,9 @@ export default function PrincipalModule({
     });
   };
 
-  // Load pending students
+  // ============================================================
+  // LOAD DATA
+  // ============================================================
   useEffect(() => {
     loadPendingStudents();
   }, [schoolId, students]);
@@ -217,7 +267,6 @@ export default function PrincipalModule({
     }
   }, [schoolId]);
 
-  // Load pending teacher requests
   const loadPendingTeacherRequests = useCallback(() => {
     try {
       const saved = localStorage.getItem('safari_pending_teacher_requests');
@@ -236,7 +285,6 @@ export default function PrincipalModule({
     }
   }, [schoolId]);
 
-  // Load approved and rejected teachers
   const loadApprovedRejectedTeachers = useCallback(() => {
     try {
       const savedApproved = localStorage.getItem('safari_approved_teachers');
@@ -289,7 +337,9 @@ export default function PrincipalModule({
     localStorage.setItem('safari_staff', JSON.stringify(newStaff));
   };
 
-  // ============ PARENT HANDLERS ============
+  // ============================================================
+  // PARENT HANDLERS
+  // ============================================================
   const handleViewParent = (parent: any) => {
     setSelectedParent(parent);
     setShowParentDetailsModal(true);
@@ -303,7 +353,6 @@ export default function PrincipalModule({
           u.id === parent.id ? { ...u, password: newPassword.trim() } : u
         );
         setRegisteredUsers(updatedUsers);
-        // Also save to localStorage directly
         try {
           localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
         } catch (e) {
@@ -389,7 +438,9 @@ export default function PrincipalModule({
     setCommunicationFiles(newFiles);
   };
 
-  // ============ STAFF HANDLERS ============
+  // ============================================================
+  // STAFF HANDLERS - WITH FULL ROLE MAPPING
+  // ============================================================
   const handleAddStaff = () => {
     setModalType('addStaff');
     setModalData({
@@ -406,6 +457,9 @@ export default function PrincipalModule({
     setShowModal(true);
   };
 
+  // ============================================================
+  // FIXED: SAVE STAFF WITH CORRECT ROLE MAPPING
+  // ============================================================
   const handleSaveStaff = () => {
     if (!modalData.name?.trim() || !modalData.email?.trim() || !modalData.password?.trim()) {
       showNotification('Name, Email and Password are required!', 'error');
@@ -423,8 +477,13 @@ export default function PrincipalModule({
       return;
     }
 
-    // Get the system role from the staff role
-    const systemRole = STAFF_ROLE_MAP[modalData.role] || 'staff';
+    // ============================================================
+    // CRITICAL FIX: Get the system role from the staff role
+    // ============================================================
+    const systemRole = STAFF_ROLE_TO_SYSTEM_ROLE[modalData.role] || 'staff';
+
+    // Show what role will be assigned
+    const roleDisplay = SYSTEM_ROLE_DISPLAY[systemRole] || modalData.role;
 
     const newStaff = {
       id: `STF-${Date.now().toString().slice(-6)}`,
@@ -443,7 +502,9 @@ export default function PrincipalModule({
 
     saveStaff([...staffMembers, newStaff]);
 
-    // Register as a user with the CORRECT system role
+    // ============================================================
+    // CRITICAL FIX: Register as a user with the CORRECT system role
+    // ============================================================
     if (setRegisteredUsers) {
       const newUser = {
         id: `USR-${Date.now().toString().slice(-6)}`,
@@ -462,12 +523,16 @@ export default function PrincipalModule({
       // Save directly to localStorage
       try {
         localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
+        console.log(`✅ Staff created with role: ${systemRole} (${roleDisplay})`);
       } catch (e) {
         console.error('Error saving users:', e);
       }
     }
 
-    showNotification(`Staff ${newStaff.name} added successfully! Login credentials created.`, 'success');
+    showNotification(
+      `✅ Staff ${newStaff.name} added successfully! Role: ${roleDisplay}. Login credentials created.`,
+      'success'
+    );
     setShowModal(false);
     setModalData({});
   };
@@ -543,7 +608,9 @@ export default function PrincipalModule({
     }
   };
 
-  // ============ TEACHER HANDLERS ============
+  // ============================================================
+  // TEACHER HANDLERS
+  // ============================================================
   const handleAddTeacher = () => {
     setModalType('addTeacher');
     setModalData({
@@ -670,7 +737,9 @@ export default function PrincipalModule({
     }
   };
 
-  // ============ BULK SELECTION HANDLERS ============
+  // ============================================================
+  // BULK SELECTION HANDLERS
+  // ============================================================
   const toggleTeacherSelection = (requestId: string) => {
     const newSelection = new Set(selectedTeachers);
     if (newSelection.has(requestId)) {
@@ -697,7 +766,6 @@ export default function PrincipalModule({
     setSelectAll(false);
   };
 
-  // Bulk approve
   const handleBulkApprove = () => {
     if (selectedTeachers.size === 0) {
       showNotification('Please select at least one teacher to approve.', 'error');
@@ -708,7 +776,6 @@ export default function PrincipalModule({
     setShowModal(true);
   };
 
-  // Bulk reject
   const handleBulkReject = () => {
     if (selectedTeachers.size === 0) {
       showNotification('Please select at least one teacher to reject.', 'error');
@@ -720,7 +787,6 @@ export default function PrincipalModule({
     setShowModal(true);
   };
 
-  // Confirm bulk approval
   const handleConfirmBulkApproval = useCallback(async () => {
     const selectedRequests = pendingTeacherRequests.filter(r => selectedTeachers.has(r.id));
 
@@ -803,7 +869,6 @@ export default function PrincipalModule({
     }
   }, [selectedTeachers, pendingTeacherRequests, userName, schoolId, schoolName, setTeachers, setRegisteredUsers, registeredUsers, showNotification, loadApprovedRejectedTeachers]);
 
-  // Confirm bulk rejection
   const handleConfirmBulkRejection = useCallback(() => {
     if (!rejectionReason.trim()) {
       showNotification('Please provide a reason for rejection.', 'error');
@@ -865,7 +930,9 @@ export default function PrincipalModule({
     }
   }, [selectedTeachers, pendingTeacherRequests, rejectionReason, userName, schoolId, setTeachers, showNotification, loadApprovedRejectedTeachers]);
 
-  // ============ SINGLE TEACHER HANDLERS ============
+  // ============================================================
+  // SINGLE TEACHER HANDLERS
+  // ============================================================
   const handleApproveTeacher = (request: any) => {
     if (!request) {
       showNotification('Error: No teacher request data found.', 'error');
@@ -1178,8 +1245,9 @@ export default function PrincipalModule({
     }
   };
 
-  // ============ FIXED: ENROLL STUDENT HANDLERS ============
-
+  // ============================================================
+  // ENROLL STUDENT HANDLERS
+  // ============================================================
   const handleEnrollStudent = (pendingStudent: any) => {
     setModalType('enrollStudent');
     setModalData({
@@ -1191,8 +1259,6 @@ export default function PrincipalModule({
     setShowModal(true);
   };
 
-  // FIXED: This is the critical function that was causing login issues
-  // Now properly saves credentials and displays them in the modal
   const handleSaveEnrollment = () => {
     if (!modalData.name?.trim() || !modalData.email?.trim()) {
       showNotification('Student name and email are required!', 'error');
@@ -1246,9 +1312,8 @@ export default function PrincipalModule({
     const createdUsers = [];
     let updatedUsers = [...registeredUsers];
 
-    // Create STUDENT user account - FIXED: properly save with password
+    // Create STUDENT user account
     if (newStudent.email && setRegisteredUsers) {
-      // Check if student user already exists
       const studentExists = updatedUsers.some(
         (u: any) => u.email.toLowerCase() === newStudent.email.toLowerCase()
       );
@@ -1270,7 +1335,6 @@ export default function PrincipalModule({
         updatedUsers = [...updatedUsers, studentUser];
         createdUsers.push({ type: 'Student', ...studentUser });
       } else {
-        // Update existing student user with correct password
         updatedUsers = updatedUsers.map((u: any) =>
           u.email.toLowerCase() === newStudent.email.toLowerCase()
             ? { ...u, password: studentPassword, associatedId: newStudent.id }
@@ -1286,7 +1350,7 @@ export default function PrincipalModule({
       }
     }
 
-    // Create PARENT user account - FIXED: properly save with password
+    // Create PARENT user account
     if (newStudent.parentEmail && setRegisteredUsers) {
       const parentExists = updatedUsers.some(
         (u: any) => u.email.toLowerCase() === newStudent.parentEmail.toLowerCase()
@@ -1309,7 +1373,6 @@ export default function PrincipalModule({
         updatedUsers = [...updatedUsers, parentUser];
         createdUsers.push({ type: 'Parent', ...parentUser });
       } else {
-        // Update existing parent user with correct password
         updatedUsers = updatedUsers.map((u: any) =>
           u.email.toLowerCase() === newStudent.parentEmail.toLowerCase()
             ? { ...u, password: parentPassword, associatedId: newStudent.id }
@@ -1325,12 +1388,10 @@ export default function PrincipalModule({
       }
     }
 
-    // FIXED: CRITICAL - Update the state and localStorage
     if (setRegisteredUsers) {
       setRegisteredUsers(updatedUsers);
     }
 
-    // FIXED: CRITICAL - Directly save to localStorage as backup
     try {
       localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
       console.log('✅ Users saved to localStorage:', updatedUsers.length);
@@ -1357,38 +1418,34 @@ export default function PrincipalModule({
       successMsg += `\n\n⚠️ No new login credentials created. Existing accounts were updated.`;
     }
 
-    // FIXED: Save credentials for modal display - store the actual passwords
     const studentCred = createdUsers.find((u: any) => u.type === 'Student');
     const parentCred = createdUsers.find((u: any) => u.type === 'Parent');
 
-    // FIXED: Set credentials data with the actual passwords from the created users
     setCredentialsData({
       student: studentCred ? {
         name: studentCred.name,
         email: studentCred.email,
-        password: studentCred.password // Use the actual password from createdUsers
+        password: studentCred.password
       } : (newStudent.email ? {
         name: newStudent.name,
         email: newStudent.email,
-        password: studentPassword // Fallback to generated password
+        password: studentPassword
       } : null),
       parent: parentCred ? {
         name: parentCred.name,
         email: parentCred.email,
-        password: parentCred.password // Use the actual password from createdUsers
+        password: parentCred.password
       } : (newStudent.parentEmail ? {
         name: newStudent.parentName || `${newStudent.name}'s Parent`,
         email: newStudent.parentEmail,
-        password: parentPassword // Fallback to generated password
+        password: parentPassword
       } : null),
-      // FIXED: Add student name for the modal title
       studentName: newStudent.name,
       grade: newStudent.grade
     });
 
     showNotification(successMsg, 'success');
 
-    // FIXED: Show credentials modal if we have credentials to display
     if (createdUsers.length > 0 || newStudent.email || newStudent.parentEmail) {
       console.log('📋 Showing credentials modal with data:', credentialsData);
       setShowCredentialsModal(true);
@@ -1398,7 +1455,9 @@ export default function PrincipalModule({
     setModalData({});
   };
 
-  // ============ FILTERS ============
+  // ============================================================
+  // FILTERS
+  // ============================================================
   const getFilteredTeachers = () => {
     const schoolTeachers = teachers.filter((t: any) => {
       if (t.schoolId) {
@@ -1449,7 +1508,9 @@ export default function PrincipalModule({
     showNotification('Queue refreshed!', 'info');
   };
 
-  // ============ RENDER ============
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -1630,7 +1691,9 @@ export default function PrincipalModule({
         </button>
       </div>
 
+      {/* ============================================================ */}
       {/* OVERVIEW TAB */}
+      {/* ============================================================ */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -1663,7 +1726,7 @@ export default function PrincipalModule({
                   <p className="text-xs text-slate-500">{getFilteredStaff().length} staff</p>
                 </div>
               </div>
-              <p className="text-sm text-slate-600 mb-3">Add staff members like Finance Officers, Registrars, etc.</p>
+              <p className="text-sm text-slate-600 mb-3">Add staff members like Finance Officers, Registrars, Vice Principal, etc.</p>
               <button
                 onClick={() => { setActiveTab('staff'); }}
                 className="w-full px-4 py-2 bg-purple-50 text-purple-700 rounded-xl text-sm font-semibold hover:bg-purple-100 transition-colors cursor-pointer"
@@ -1753,7 +1816,9 @@ export default function PrincipalModule({
         </div>
       )}
 
+      {/* ============================================================ */}
       {/* PENDING STUDENTS TAB */}
+      {/* ============================================================ */}
       {activeTab === 'pending' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
@@ -1823,7 +1888,9 @@ export default function PrincipalModule({
         </div>
       )}
 
+      {/* ============================================================ */}
       {/* STUDENTS TAB */}
+      {/* ============================================================ */}
       {activeTab === 'students' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
@@ -1886,7 +1953,9 @@ export default function PrincipalModule({
         </div>
       )}
 
+      {/* ============================================================ */}
       {/* TEACHERS TAB */}
+      {/* ============================================================ */}
       {activeTab === 'teachers' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
@@ -2043,7 +2112,9 @@ export default function PrincipalModule({
         </div>
       )}
 
-      {/* STAFF TAB */}
+      {/* ============================================================ */}
+      {/* STAFF TAB - WITH COMPLETE ROLE LIST INCLUDING VICE PRINCIPAL */}
+      {/* ============================================================ */}
       {activeTab === 'staff' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
@@ -2076,6 +2147,7 @@ export default function PrincipalModule({
                   <th className="px-4 py-2 text-left">Name</th>
                   <th className="px-4 py-2 text-left">Email</th>
                   <th className="px-4 py-2 text-left">Role</th>
+                  <th className="px-4 py-2 text-left">System Access</th>
                   <th className="px-4 py-2 text-left">Department</th>
                   <th className="px-4 py-2 text-left">Status</th>
                   <th className="px-4 py-2 text-left">Actions</th>
@@ -2084,67 +2156,94 @@ export default function PrincipalModule({
               <tbody className="divide-y divide-slate-100">
                 {getFilteredStaff().length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                    <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
                       No staff members found for this school.
                     </td>
                   </tr>
                 ) : (
-                  getFilteredStaff().map((staff: any) => (
-                    <tr key={staff.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 font-medium">{staff.name}</td>
-                      <td className="px-4 py-3 text-sm">{staff.email}</td>
-                      <td className="px-4 py-3">
-                        <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs">
-                          {staff.role || 'N/A'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">{staff.department || 'N/A'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded-full text-xs ${
-                          staff.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                        }`}>
-                          {staff.status || 'Active'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-1 flex-wrap">
-                          <button
-                            onClick={() => handleToggleStaffStatus(staff.id, staff.status)}
-                            className={`p-1 rounded transition-colors ${
-                              staff.status === 'Active'
-                                ? 'text-red-500 hover:bg-red-50'
-                                : 'text-emerald-500 hover:bg-emerald-50'
-                            }`}
-                            title={staff.status === 'Active' ? 'Deactivate' : 'Activate'}
-                          >
-                            {staff.status === 'Active' ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
-                          </button>
-                          <button
-                            onClick={() => handleResetStaffPassword(staff.id, staff.name)}
-                            className="text-amber-500 hover:text-amber-700 hover:bg-amber-50 p-1 rounded transition-colors"
-                            title="Reset Password"
-                          >
-                            <KeyRound className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteStaff(staff.id, staff.name)}
-                            className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1 rounded transition-colors"
-                            title="Delete"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                  getFilteredStaff().map((staff: any) => {
+                    const systemRole = STAFF_ROLE_TO_SYSTEM_ROLE[staff.role] || 'staff';
+                    const roleDisplay = SYSTEM_ROLE_DISPLAY[systemRole] || staff.role;
+                    return (
+                      <tr key={staff.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-3 font-medium">{staff.name}</td>
+                        <td className="px-4 py-3 text-sm">{staff.email}</td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs">
+                            {staff.role || 'N/A'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                            systemRole === 'vice_principal' ? 'bg-blue-100 text-blue-700' :
+                            systemRole === 'registrar' ? 'bg-indigo-100 text-indigo-700' :
+                            systemRole === 'finance' ? 'bg-emerald-100 text-emerald-700' :
+                            systemRole === 'librarian' ? 'bg-amber-100 text-amber-700' :
+                            systemRole === 'clinic' ? 'bg-red-100 text-red-700' :
+                            systemRole === 'counselor' ? 'bg-pink-100 text-pink-700' :
+                            systemRole === 'transport' ? 'bg-cyan-100 text-cyan-700' :
+                            systemRole === 'driver' ? 'bg-blue-100 text-blue-700' :
+                            systemRole === 'cafeteria' ? 'bg-orange-100 text-orange-700' :
+                            systemRole === 'alumni' ? 'bg-violet-100 text-violet-700' :
+                            'bg-slate-100 text-slate-700'
+                          }`}>
+                            {roleDisplay}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">{staff.department || 'N/A'}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 rounded-full text-xs ${
+                            staff.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                          }`}>
+                            {staff.status || 'Active'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex gap-1 flex-wrap">
+                            <button
+                              onClick={() => handleToggleStaffStatus(staff.id, staff.status)}
+                              className={`p-1 rounded transition-colors ${
+                                staff.status === 'Active'
+                                  ? 'text-red-500 hover:bg-red-50'
+                                  : 'text-emerald-500 hover:bg-emerald-50'
+                              }`}
+                              title={staff.status === 'Active' ? 'Deactivate' : 'Activate'}
+                            >
+                              {staff.status === 'Active' ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                            </button>
+                            <button
+                              onClick={() => handleResetStaffPassword(staff.id, staff.name)}
+                              className="text-amber-500 hover:text-amber-700 hover:bg-amber-50 p-1 rounded transition-colors"
+                              title="Reset Password"
+                            >
+                              <KeyRound className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteStaff(staff.id, staff.name)}
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1 rounded transition-colors"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
+          <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-500">
+            <p>💡 Staff roles map to system access: {Object.keys(STAFF_ROLE_TO_SYSTEM_ROLE).join(', ')}</p>
+            <p className="mt-1">🔑 Vice Principal → Vice Principal Dashboard | Registrar → Registrar Dashboard | Finance Officer → Finance Dashboard</p>
+          </div>
         </div>
       )}
 
+      {/* ============================================================ */}
       {/* PARENTS TAB */}
+      {/* ============================================================ */}
       {activeTab === 'parents' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
@@ -2260,7 +2359,9 @@ export default function PrincipalModule({
         </div>
       )}
 
+      {/* ============================================================ */}
       {/* TEACHER QUEUE TAB */}
+      {/* ============================================================ */}
       {activeTab === 'teacher queue' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
@@ -2316,6 +2417,14 @@ export default function PrincipalModule({
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-slate-600 sticky top-0">
                 <tr>
+                  <th className="px-4 py-2 text-left">
+                    <button
+                      onClick={toggleSelectAll}
+                      className="flex items-center gap-1 cursor-pointer"
+                    >
+                      {selectAll ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                    </button>
+                  </th>
                   <th className="px-4 py-2 text-left">Teacher</th>
                   <th className="px-4 py-2 text-left">Email</th>
                   <th className="px-4 py-2 text-left">Department</th>
@@ -2328,7 +2437,7 @@ export default function PrincipalModule({
               <tbody className="divide-y divide-slate-100">
                 {pendingTeacherRequests.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
+                    <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
                       <div className="flex flex-col items-center gap-2">
                         <CheckCircle className="h-12 w-12 text-green-400 mx-auto" />
                         <p className="font-medium">No pending teacher requests!</p>
@@ -2345,6 +2454,14 @@ export default function PrincipalModule({
                 ) : (
                   pendingTeacherRequests.map((request: any) => (
                     <tr key={request.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => toggleTeacherSelection(request.id)}
+                          className="cursor-pointer"
+                        >
+                          {selectedTeachers.has(request.id) ? <CheckSquare className="h-4 w-4 text-blue-600" /> : <Square className="h-4 w-4 text-slate-400" />}
+                        </button>
+                      </td>
                       <td className="px-4 py-3 font-medium">{request.teacherData.name}</td>
                       <td className="px-4 py-3">{request.teacherData.email}</td>
                       <td className="px-4 py-3">{request.teacherData.department || 'N/A'}</td>
@@ -2395,7 +2512,9 @@ export default function PrincipalModule({
         </div>
       )}
 
+      {/* ============================================================ */}
       {/* APPROVED TEACHERS TAB */}
+      {/* ============================================================ */}
       {activeTab === 'approved' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
@@ -2472,7 +2591,9 @@ export default function PrincipalModule({
         </div>
       )}
 
+      {/* ============================================================ */}
       {/* REJECTED TEACHERS TAB */}
+      {/* ============================================================ */}
       {activeTab === 'rejected' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
@@ -2566,9 +2687,9 @@ export default function PrincipalModule({
         </div>
       )}
 
-      {/* ============ MODALS ============ */}
-
-      {/* ADD STAFF MODAL */}
+      {/* ============================================================ */}
+      {/* ADD STAFF MODAL - WITH VICE PRINCIPAL IN DROPDOWN */}
+      {/* ============================================================ */}
       {showModal && modalType === 'addStaff' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl">
@@ -2591,7 +2712,7 @@ export default function PrincipalModule({
               </p>
               <p className="text-xs text-blue-600 mt-1 ml-6">
                 <Shield className="h-3 w-3 inline mr-1" />
-                A login account will be automatically created for this staff member.
+                A login account will be automatically created for this staff member with the correct system role.
               </p>
             </div>
 
@@ -2637,22 +2758,75 @@ export default function PrincipalModule({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Role <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Staff Role <span className="text-red-500">*</span>
+                  <span className="text-slate-400 font-normal ml-1">(Determines system access)</span>
+                </label>
                 <select
                   required
                   value={modalData.role || 'Administrative'}
-                  onChange={(e) => setModalData({ ...modalData, role: e.target.value })}
+                  onChange={(e) => {
+                    const selectedRole = e.target.value;
+                    const systemRole = STAFF_ROLE_TO_SYSTEM_ROLE[selectedRole] || 'staff';
+                    const roleDisplay = SYSTEM_ROLE_DISPLAY[systemRole] || selectedRole;
+                    setModalData({ ...modalData, role: selectedRole });
+                    // Show a preview of what access they'll get
+                    if (selectedRole === 'Vice Principal') {
+                      showNotification(`✅ Vice Principal will get access to the Vice Principal Dashboard`, 'info');
+                    } else if (selectedRole === 'Registrar') {
+                      showNotification(`✅ Registrar will get access to the Registrar Dashboard`, 'info');
+                    } else if (selectedRole === 'Finance Officer') {
+                      showNotification(`✅ Finance Officer will get access to the Finance Dashboard`, 'info');
+                    }
+                  }}
                   className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none text-sm"
                 >
-                  {STAFF_ROLES.map((role) => (
-                    <option key={role} value={role}>{role}</option>
-                  ))}
+                  {/* Staff Roles Group */}
+                  <optgroup label="Administrative Roles">
+                    <option value="Registrar">📋 Registrar</option>
+                    <option value="Finance Officer">💰 Finance Officer</option>
+                    <option value="Vice Principal">👔 Vice Principal</option>
+                    <option value="Administrative">📁 Administrative</option>
+                    <option value="HR Officer">👤 HR Officer</option>
+                    <option value="Receptionist">📞 Receptionist</option>
+                  </optgroup>
+
+                  <optgroup label="Academic Support">
+                    <option value="Librarian">📚 Librarian</option>
+                    <option value="Clinic Nurse">🏥 Clinic Nurse</option>
+                    <option value="Counselor">💬 Counselor</option>
+                  </optgroup>
+
+                  <optgroup label="Operations">
+                    <option value="Transport Manager">🚌 Transport Manager</option>
+                    <option value="Driver">🚗 Driver</option>
+                    <option value="Cafeteria Manager">🍽️ Cafeteria Manager</option>
+                    <option value="Alumni Coordinator">🎓 Alumni Coordinator</option>
+                  </optgroup>
+
+                  <optgroup label="Technical & Support">
+                    <option value="IT Support">💻 IT Support</option>
+                    <option value="Security Officer">🔒 Security Officer</option>
+                    <option value="Maintenance Staff">🔧 Maintenance Staff</option>
+                    <option value="Inventory Manager">📦 Inventory Manager</option>
+                  </optgroup>
                 </select>
-                {modalData.role === 'Finance Officer' && (
-                  <p className="text-xs text-emerald-600 mt-1">
-                    ✅ This will grant Finance Officer access to the Finance Dashboard.
-                  </p>
-                )}
+                <div className="mt-2 text-xs text-slate-500 bg-slate-50 p-2 rounded-lg">
+                  <span className="font-medium">System Access:</span>{' '}
+                  <span className="text-purple-700 font-semibold">
+                    {STAFF_ROLE_TO_SYSTEM_ROLE[modalData.role] === 'vice_principal' ? '👔 Vice Principal Dashboard' :
+                     STAFF_ROLE_TO_SYSTEM_ROLE[modalData.role] === 'registrar' ? '📋 Registrar Dashboard' :
+                     STAFF_ROLE_TO_SYSTEM_ROLE[modalData.role] === 'finance' ? '💰 Finance Dashboard' :
+                     STAFF_ROLE_TO_SYSTEM_ROLE[modalData.role] === 'librarian' ? '📚 Librarian Dashboard' :
+                     STAFF_ROLE_TO_SYSTEM_ROLE[modalData.role] === 'clinic' ? '🏥 Clinic Dashboard' :
+                     STAFF_ROLE_TO_SYSTEM_ROLE[modalData.role] === 'counselor' ? '💬 Counselor Dashboard' :
+                     STAFF_ROLE_TO_SYSTEM_ROLE[modalData.role] === 'transport' ? '🚌 Transport Dashboard' :
+                     STAFF_ROLE_TO_SYSTEM_ROLE[modalData.role] === 'driver' ? '🚗 Driver Dashboard' :
+                     STAFF_ROLE_TO_SYSTEM_ROLE[modalData.role] === 'cafeteria' ? '🍽️ Cafeteria Dashboard' :
+                     STAFF_ROLE_TO_SYSTEM_ROLE[modalData.role] === 'alumni' ? '🎓 Alumni Dashboard' :
+                     '📁 Staff Portal'}
+                  </span>
+                </div>
               </div>
 
               <div>
@@ -2670,7 +2844,7 @@ export default function PrincipalModule({
                 <label className="block text-sm font-medium text-slate-700 mb-1">Phone Number</label>
                 <input
                   type="tel"
-                  placeholder="e.g. +971 50 123 4567"
+                  placeholder="e.g. +251 9XX XXX XXX"
                   value={modalData.phone || ''}
                   onChange={(e) => setModalData({ ...modalData, phone: e.target.value })}
                   className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none text-sm"
@@ -2708,7 +2882,9 @@ export default function PrincipalModule({
         </div>
       )}
 
+      {/* ============================================================ */}
       {/* ADD TEACHER MODAL */}
+      {/* ============================================================ */}
       {showModal && modalType === 'addTeacher' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl">
@@ -2819,7 +2995,7 @@ export default function PrincipalModule({
                 <label className="block text-sm font-medium text-slate-700 mb-1">Phone Number</label>
                 <input
                   type="tel"
-                  placeholder="e.g. +971 50 123 4567"
+                  placeholder="e.g. +251 9XX XXX XXX"
                   value={modalData.phone || ''}
                   onChange={(e) => setModalData({ ...modalData, phone: e.target.value })}
                   className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-sm"
@@ -2869,7 +3045,9 @@ export default function PrincipalModule({
         </div>
       )}
 
-      {/* ENROLL STUDENT MODAL - FIXED with proper credentials saving */}
+      {/* ============================================================ */}
+      {/* ENROLL STUDENT MODAL */}
+      {/* ============================================================ */}
       {showModal && modalType === 'enrollStudent' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl">
@@ -3041,7 +3219,9 @@ export default function PrincipalModule({
         </div>
       )}
 
-      {/* CREDENTIALS MODAL - FIXED with copy functionality and correct credential display */}
+      {/* ============================================================ */}
+      {/* CREDENTIALS MODAL */}
+      {/* ============================================================ */}
       {showCredentialsModal && credentialsData && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border-2 border-emerald-200">
@@ -3130,7 +3310,9 @@ export default function PrincipalModule({
         </div>
       )}
 
+      {/* ============================================================ */}
       {/* APPROVE TEACHER MODAL */}
+      {/* ============================================================ */}
       {showModal && modalType === 'approveTeacher' && selectedRequest && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full">
@@ -3218,7 +3400,9 @@ export default function PrincipalModule({
         </div>
       )}
 
+      {/* ============================================================ */}
       {/* REJECT TEACHER MODAL */}
+      {/* ============================================================ */}
       {showModal && modalType === 'rejectTeacher' && selectedRequest && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full">
@@ -3301,7 +3485,9 @@ export default function PrincipalModule({
         </div>
       )}
 
+      {/* ============================================================ */}
       {/* BULK APPROVE MODAL */}
+      {/* ============================================================ */}
       {showModal && modalType === 'bulkApprove' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full">
@@ -3364,7 +3550,9 @@ export default function PrincipalModule({
         </div>
       )}
 
+      {/* ============================================================ */}
       {/* BULK REJECT MODAL */}
+      {/* ============================================================ */}
       {showModal && modalType === 'bulkReject' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full">
@@ -3442,7 +3630,9 @@ export default function PrincipalModule({
         </div>
       )}
 
+      {/* ============================================================ */}
       {/* VIEW REQUEST DETAILS MODAL */}
+      {/* ============================================================ */}
       {showRequestModal && selectedRequest && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
@@ -3521,7 +3711,9 @@ export default function PrincipalModule({
         </div>
       )}
 
+      {/* ============================================================ */}
       {/* VIEW TEACHER DETAILS MODAL */}
+      {/* ============================================================ */}
       {showTeacherDetailsModal && selectedTeacherDetails && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
