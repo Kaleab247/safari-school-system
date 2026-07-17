@@ -1,4 +1,4 @@
-// RegistrarModule.tsx - Complete Version with Full Registrar Features
+// RegistrarModule.tsx - Complete Version with Auto-Filled Grade & Fee from Finance
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -15,7 +15,8 @@ import {
   ExternalLink, Printer as PrinterIcon, Check,
   ArrowRight, ChevronLeft, Menu, LogOut, Bell,
   Home, PieChart, Activity, TrendingUp, TrendingDown,
-  Percent, Calendar as CalendarIcon, Clock as ClockIcon
+  Percent, Calendar as CalendarIcon, Clock as ClockIcon,
+  Receipt, Wallet
 } from 'lucide-react';
 
 interface RegistrarModuleProps {
@@ -105,7 +106,40 @@ export default function RegistrarModule({
   const [documentFiles, setDocumentFiles] = useState<File[]>([]);
   const [selectedDocumentType, setSelectedDocumentType] = useState('');
   const [showTransferModal, setShowTransferModal] = useState(false);
-  const [showGraduationModal, setShowGraduationModal] = useState(false);
+  const [feeStructures, setFeeStructures] = useState<any[]>([]);
+
+  // ============================================================
+  // LOAD FEE STRUCTURES
+  // ============================================================
+  useEffect(() => {
+    loadFeeStructures();
+  }, [schoolId]);
+
+  const loadFeeStructures = () => {
+    try {
+      const saved = localStorage.getItem('safari_fee_structures');
+      const allFees = saved ? JSON.parse(saved) : [];
+
+      // Filter by school
+      let filteredFees = allFees;
+      if (schoolId) {
+        filteredFees = allFees.filter((f: any) => f.schoolId === schoolId || !f.schoolId);
+      }
+
+      setFeeStructures(filteredFees);
+    } catch (error) {
+      console.error('Error loading fee structures:', error);
+      setFeeStructures([]);
+    }
+  };
+
+  // ============================================================
+  // GET FEE FOR GRADE
+  // ============================================================
+  const getFeeForGrade = (grade: string) => {
+    const fee = feeStructures.find((f: any) => f.grade === grade);
+    return fee ? fee.totalAmount : 0;
+  };
 
   // Filter students
   const pendingAdmissions = admissions.filter((a: any) => a.status === 'Pending').length;
@@ -137,17 +171,31 @@ export default function RegistrarModule({
   };
 
   // ============================================================
-  // ENROLL STUDENT - SAME AS PRINCIPAL
+  // ENROLL STUDENT - WITH AUTO-FILLED GRADE & FEE FROM FINANCE
   // ============================================================
   const handleEnrollStudent = (pendingStudent: any) => {
+    // Get the grade from the admission application
+    const gradeFromAdmission = pendingStudent.gradeApplied || pendingStudent.grade || 'PreKG';
+
+    // Get the fee from finance structure based on the grade
+    const feeAmount = getFeeForGrade(gradeFromAdmission);
+
+    // Get the fee paid from the admission record (from finance)
+    const feePaid = pendingStudent.feePaid || pendingStudent.feeAmount || 0;
+
     setModalType('enrollStudent');
     setModalData({
       ...pendingStudent,
-      grade: pendingStudent.grade || 'PreKG',
-      section: 'A',
+      grade: gradeFromAdmission,  // Auto-filled from admission
+      section: 'A',               // Registrar chooses section
       classId: '',
       admissionNo: generateAdmissionNo(),
       studentId: generateStudentId(),
+      feeAmount: feeAmount,       // From finance fee structure
+      feePaid: feePaid,           // From finance payment record
+      feeBalance: feeAmount - feePaid, // Calculated balance
+      previousSchool: pendingStudent.previousSchool || '',
+      enrollmentDate: new Date().toISOString().split('T')[0]
     });
     setShowModal(true);
   };
@@ -184,9 +232,9 @@ export default function RegistrarModule({
       parentName: modalData.parentName.trim(),
       parentEmail: modalData.parentEmail.trim(),
       attendanceRate: 0,
-      tuitionTotal: 0,
-      tuitionPaid: 0,
-      tuitionBalance: 0,
+      tuitionTotal: modalData.feeAmount || 0,
+      tuitionPaid: modalData.feePaid || 0,
+      tuitionBalance: (modalData.feeAmount || 0) - (modalData.feePaid || 0),
       status: 'Enrolled',
       schoolId: schoolId,
       schoolName: schoolName,
@@ -194,7 +242,7 @@ export default function RegistrarModule({
       documents: [],
       emergencyContacts: [],
       previousSchool: modalData.previousSchool || '',
-      enrollmentDate: new Date().toISOString(),
+      enrollmentDate: modalData.enrollmentDate || new Date().toISOString(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -301,10 +349,22 @@ export default function RegistrarModule({
     const updatedPending = allPending.filter((s: any) => s.id !== modalData.id);
     localStorage.setItem('safari_pending_students', JSON.stringify(updatedPending));
 
+    // Update the admission status to Enrolled
+    const allAdmissions = JSON.parse(localStorage.getItem('safari_admissions') || '[]');
+    const updatedAdmissions = allAdmissions.map((a: any) => {
+      if (a.id === modalData.id || a.candidateName === modalData.name) {
+        return { ...a, status: 'Enrolled', enrolledDate: new Date().toISOString() };
+      }
+      return a;
+    });
+    localStorage.setItem('safari_admissions', JSON.stringify(updatedAdmissions));
+
     // Build success message
     let successMsg = `✅ Student ${newStudent.name} enrolled successfully!\n`;
     successMsg += `📋 Student ID: ${newStudent.studentId}\n`;
     successMsg += `📋 Admission No: ${newStudent.admissionNo}\n`;
+    successMsg += `📋 Grade: ${newStudent.grade} - Section ${newStudent.classSection}\n`;
+    successMsg += `💰 Fee Paid: ${newStudent.tuitionPaid} Birr / Total: ${newStudent.tuitionTotal} Birr\n`;
 
     if (createdUsers.length > 0) {
       successMsg += `\n🔑 Login credentials created:\n`;
@@ -340,7 +400,9 @@ export default function RegistrarModule({
       studentName: newStudent.name,
       grade: newStudent.grade,
       studentId: newStudent.studentId,
-      admissionNo: newStudent.admissionNo
+      admissionNo: newStudent.admissionNo,
+      feePaid: newStudent.tuitionPaid,
+      feeTotal: newStudent.tuitionTotal
     });
 
     showNotification(successMsg, 'success');
@@ -397,7 +459,6 @@ export default function RegistrarModule({
       return s;
     });
 
-    // Save to localStorage
     try {
       localStorage.setItem('safari_students', JSON.stringify(updatedStudents));
     } catch (e) {
@@ -568,7 +629,6 @@ export default function RegistrarModule({
       return;
     }
 
-    // Create document records
     const newDocuments = documentFiles.map((file: File) => ({
       id: `DOC-${Date.now().toString().slice(-6)}`,
       type: selectedDocumentType,
@@ -580,7 +640,6 @@ export default function RegistrarModule({
       status: 'Pending'
     }));
 
-    // Update student with documents
     const updatedStudents = students.map((s: any) => {
       if (s.id === selectedStudent.id) {
         return {
@@ -665,6 +724,7 @@ export default function RegistrarModule({
         ...a,
         status: 'Accepted',
         feePaid: amount,
+        feeAmount: amount,
         feePaidDate: new Date().toLocaleDateString(),
         approvedByFinance: true
       } : a
@@ -987,7 +1047,7 @@ export default function RegistrarModule({
       )}
 
       {/* ============================================================ */}
-      {/* STUDENTS TAB - COMPLETE MANAGEMENT */}
+      {/* STUDENTS TAB */}
       {/* ============================================================ */}
       {activeTab === 'students' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -1164,6 +1224,7 @@ export default function RegistrarModule({
                   <th className="px-4 py-2 text-left">Candidate</th>
                   <th className="px-4 py-2 text-left">Grade</th>
                   <th className="px-4 py-2 text-left">Parent</th>
+                  <th className="px-4 py-2 text-left">Fee Paid</th>
                   <th className="px-4 py-2 text-left">Submitted</th>
                   <th className="px-4 py-2 text-left">Status</th>
                   <th className="px-4 py-2 text-left">Actions</th>
@@ -1172,7 +1233,7 @@ export default function RegistrarModule({
               <tbody className="divide-y divide-slate-100">
                 {getFilteredAdmissions().length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                    <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
                       {searchQuery ? 'No applications match your search.' : 'No applications found.'}
                     </td>
                   </tr>
@@ -1182,6 +1243,15 @@ export default function RegistrarModule({
                       <td className="px-4 py-3 font-medium">{app.candidateName}</td>
                       <td className="px-4 py-3">{app.gradeApplied}</td>
                       <td className="px-4 py-3">{app.parentName}</td>
+                      <td className="px-4 py-3">
+                        {app.feePaid ? (
+                          <span className="text-emerald-600 font-semibold">{app.feePaid} Birr</span>
+                        ) : app.status === 'PaymentPending' ? (
+                          <span className="text-blue-600 text-xs">Awaiting Payment</span>
+                        ) : (
+                          <span className="text-slate-400 text-xs">N/A</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-slate-500">{app.submittedDate}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 rounded-full text-xs flex items-center gap-1 ${getStatusBadge(app.status)}`}>
@@ -1224,9 +1294,9 @@ export default function RegistrarModule({
                           {app.status === 'Accepted' && (
                             <button
                               onClick={() => handleEnrollStudent(app)}
-                              className="px-2 py-1 bg-purple-500 text-white rounded-lg text-xs font-semibold hover:bg-purple-600 cursor-pointer"
+                              className="px-2 py-1 bg-purple-500 text-white rounded-lg text-xs font-semibold hover:bg-purple-600 cursor-pointer flex items-center gap-1"
                             >
-                              <UserCheck className="h-3 w-3 inline" /> Enroll
+                              <UserCheck className="h-3 w-3" /> Enroll
                             </button>
                           )}
 
@@ -1250,302 +1320,7 @@ export default function RegistrarModule({
       )}
 
       {/* ============================================================ */}
-      {/* TRANSFERS TAB */}
-      {/* ============================================================ */}
-      {activeTab === 'transfers' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-          <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
-            <ArrowRight className="h-4 w-4 text-amber-500" /> Student Transfers
-          </h3>
-          <div className="space-y-4">
-            {students.filter((s: any) => s.status === 'Transferred').length === 0 ? (
-              <p className="text-slate-400 text-center py-8">No transfer records found.</p>
-            ) : (
-              students.filter((s: any) => s.status === 'Transferred').map((student: any) => (
-                <div key={student.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-xl">
-                  <div>
-                    <p className="font-medium text-slate-900">{student.name}</p>
-                    <p className="text-sm text-slate-500">From: {student.schoolName || 'N/A'} → To: {student.previousSchool || 'N/A'}</p>
-                    <p className="text-xs text-slate-400">Transfer Date: {student.transferDate ? new Date(student.transferDate).toLocaleDateString() : 'N/A'}</p>
-                  </div>
-                  <button
-                    onClick={() => generateReport('Transfer Certificate')}
-                    className="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-semibold hover:bg-blue-600 cursor-pointer"
-                  >
-                    <Download className="h-3 w-3 inline" /> Certificate
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================ */}
-      {/* GRADUATES TAB */}
-      {/* ============================================================ */}
-      {activeTab === 'graduation' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-          <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
-            <Award className="h-4 w-4 text-purple-500" /> Graduation Management
-          </h3>
-
-          {/* Graduation Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-purple-50 p-4 rounded-xl text-center">
-              <p className="text-2xl font-bold text-purple-700">{graduatedStudents.length}</p>
-              <p className="text-xs text-purple-600">Graduated</p>
-            </div>
-            <div className="bg-green-50 p-4 rounded-xl text-center">
-              <p className="text-2xl font-bold text-green-700">
-                {students.filter((s: any) => s.status === 'Active' && GRADE_LEVELS.indexOf(s.grade) === GRADE_LEVELS.length - 1).length}
-              </p>
-              <p className="text-xs text-green-600">Eligible for Graduation</p>
-            </div>
-            <div className="bg-amber-50 p-4 rounded-xl text-center">
-              <p className="text-2xl font-bold text-amber-700">
-                {students.filter((s: any) => s.status === 'Graduated' && new Date(s.graduationDate).getFullYear() === new Date().getFullYear()).length}
-              </p>
-              <p className="text-xs text-amber-600">This Year's Graduates</p>
-            </div>
-            <div className="bg-blue-50 p-4 rounded-xl text-center">
-              <p className="text-2xl font-bold text-blue-700">{students.filter((s: any) => s.status === 'Alumni').length}</p>
-              <p className="text-xs text-blue-600">Alumni</p>
-            </div>
-          </div>
-
-          {/* Graduate List */}
-          <div className="border border-slate-200 rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-slate-600">
-                <tr>
-                  <th className="px-4 py-2 text-left">Name</th>
-                  <th className="px-4 py-2 text-left">Grade</th>
-                  <th className="px-4 py-2 text-left">Graduation Date</th>
-                  <th className="px-4 py-2 text-left">Status</th>
-                  <th className="px-4 py-2 text-left">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {students.filter((s: any) => s.status === 'Graduated' || s.status === 'Alumni').length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
-                      No graduates yet.
-                    </td>
-                  </tr>
-                ) : (
-                  students.filter((s: any) => s.status === 'Graduated' || s.status === 'Alumni').map((student: any) => (
-                    <tr key={student.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-2 font-medium">{student.name}</td>
-                      <td className="px-4 py-2">{student.grade}</td>
-                      <td className="px-4 py-2 text-slate-500">
-                        {student.graduationDate ? new Date(student.graduationDate).toLocaleDateString() : 'N/A'}
-                      </td>
-                      <td className="px-4 py-2">
-                        <span className={`px-2 py-0.5 rounded-full text-xs ${getStatusBadge(student.status)}`}>
-                          {student.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2">
-                        <button
-                          onClick={() => generateReport('Diploma')}
-                          className="px-2 py-1 bg-purple-500 text-white rounded-lg text-xs font-semibold hover:bg-purple-600 cursor-pointer"
-                        >
-                          <Download className="h-3 w-3 inline" /> Diploma
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================ */}
-      {/* REPORTS TAB */}
-      {/* ============================================================ */}
-      {activeTab === 'reports' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-          <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-emerald-500" /> Generate Reports
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[
-              { name: 'Enrollment Report', icon: Users, color: 'blue' },
-              { name: 'Class List', icon: BookOpen, color: 'green' },
-              { name: 'Gender Distribution', icon: PieChart, color: 'purple' },
-              { name: 'Age Distribution', icon: Calendar, color: 'orange' },
-              { name: 'Student Promotion', icon: TrendingUp, color: 'emerald' },
-              { name: 'Graduated Students', icon: Award, color: 'indigo' },
-              { name: 'Dropouts Report', icon: AlertTriangle, color: 'red' },
-              { name: 'Transfers Report', icon: ArrowRight, color: 'amber' },
-              { name: 'Academic History', icon: FileText, color: 'sky' },
-            ].map((report) => (
-              <button
-                key={report.name}
-                onClick={() => generateReport(report.name)}
-                className={`p-4 bg-${report.color}-50 hover:bg-${report.color}-100 rounded-xl text-center transition-colors cursor-pointer border border-${report.color}-200`}
-              >
-                <report.icon className={`h-8 w-8 text-${report.color}-500 mx-auto mb-2`} />
-                <p className="text-sm font-semibold text-slate-900">{report.name}</p>
-                <p className="text-xs text-slate-500">Click to generate</p>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================ */}
-      {/* DOCUMENTS TAB */}
-      {/* ============================================================ */}
-      {activeTab === 'documents' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-          <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
-            <FileText className="h-4 w-4 text-indigo-500" /> Document Verification
-          </h3>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {DOCUMENT_TYPES.map((docType) => (
-                <div key={docType} className="bg-slate-50 p-3 rounded-xl text-center">
-                  <p className="text-sm font-medium text-slate-700">{docType}</p>
-                  <p className="text-xs text-slate-400">
-                    {students.filter((s: any) => s.documents?.some((d: any) => d.type === docType)).length} uploaded
-                  </p>
-                </div>
-              ))}
-            </div>
-            <div className="border-t border-slate-200 pt-4">
-              <p className="text-sm text-slate-500">Select a student from the Students tab to upload documents.</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================ */}
-      {/* VIEW ADMISSION MODAL */}
-      {/* ============================================================ */}
-      {showModal && modalType === 'viewAdmission' && selectedAdmission && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold">Application Details</h3>
-              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-slate-50 p-3 rounded-xl">
-                  <p className="text-xs text-slate-500">Candidate Name</p>
-                  <p className="font-bold">{selectedAdmission.candidateName}</p>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-xl">
-                  <p className="text-xs text-slate-500">Grade Applied</p>
-                  <p className="font-bold">{selectedAdmission.gradeApplied}</p>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-xl">
-                  <p className="text-xs text-slate-500">Parent Name</p>
-                  <p className="font-bold">{selectedAdmission.parentName}</p>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-xl">
-                  <p className="text-xs text-slate-500">Email</p>
-                  <p className="font-bold text-sm">{selectedAdmission.email}</p>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-xl">
-                  <p className="text-xs text-slate-500">Phone</p>
-                  <p className="font-bold">{selectedAdmission.phone || 'N/A'}</p>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-xl">
-                  <p className="text-xs text-slate-500">Submitted Date</p>
-                  <p className="font-bold">{selectedAdmission.submittedDate}</p>
-                </div>
-                <div className="bg-slate-50 p-3 rounded-xl col-span-2">
-                  <p className="text-xs text-slate-500">Status</p>
-                  <span className={`px-2 py-0.5 rounded-full text-xs flex items-center gap-1 inline-flex mt-1 ${getStatusBadge(selectedAdmission.status)}`}>
-                    {getStatusIcon(selectedAdmission.status)}
-                    {selectedAdmission.status}
-                  </span>
-                </div>
-                {selectedAdmission.feePaid && (
-                  <div className="bg-emerald-50 p-3 rounded-xl col-span-2">
-                    <p className="text-xs text-slate-500">Fee Paid</p>
-                    <p className="font-bold text-emerald-600">{selectedAdmission.feePaid} Birr</p>
-                    <p className="text-xs text-slate-400">Paid on: {selectedAdmission.feePaidDate}</p>
-                  </div>
-                )}
-                {selectedAdmission.receiptFiles && selectedAdmission.receiptFiles.length > 0 && (
-                  <div className="bg-indigo-50 p-3 rounded-xl col-span-2">
-                    <p className="text-xs text-slate-500">Receipt Files</p>
-                    <p className="font-bold text-indigo-600">{selectedAdmission.receiptFiles.length} file(s)</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200">
-                {selectedAdmission.status === 'Pending' && (
-                  <button
-                    onClick={() => {
-                      handleProcessApplication(selectedAdmission.id, selectedAdmission.candidateName);
-                      setShowModal(false);
-                    }}
-                    className="flex-1 bg-blue-500 text-white py-2 rounded-xl font-semibold hover:bg-blue-600 transition-colors flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <Send className="h-4 w-4" /> Send to Finance
-                  </button>
-                )}
-                {selectedAdmission.status === 'PaymentPending' && (
-                  <button
-                    onClick={() => {
-                      const amount = prompt('Enter fee amount paid (Birr):', '100');
-                      if (amount && !isNaN(Number(amount))) {
-                        handleFinanceApprove(selectedAdmission.id, Number(amount));
-                        setShowModal(false);
-                      }
-                    }}
-                    className="flex-1 bg-emerald-500 text-white py-2 rounded-xl font-semibold hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <DollarSign className="h-4 w-4" /> Record Payment
-                  </button>
-                )}
-                {selectedAdmission.status === 'Accepted' && (
-                  <button
-                    onClick={() => {
-                      handleEnrollStudent(selectedAdmission);
-                      setShowModal(false);
-                    }}
-                    className="flex-1 bg-purple-500 text-white py-2 rounded-xl font-semibold hover:bg-purple-600 transition-colors flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <UserCheck className="h-4 w-4" /> Enroll Student
-                  </button>
-                )}
-                {(selectedAdmission.status === 'Pending' || selectedAdmission.status === 'PaymentPending') && (
-                  <button
-                    onClick={() => {
-                      handleRejectApplication(selectedAdmission.id, selectedAdmission.candidateName);
-                      setShowModal(false);
-                    }}
-                    className="flex-1 bg-red-500 text-white py-2 rounded-xl font-semibold hover:bg-red-600 transition-colors flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <XCircle className="h-4 w-4" /> Reject Application
-                  </button>
-                )}
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 bg-slate-200 text-slate-700 py-2 rounded-xl font-semibold hover:bg-slate-300 transition-colors cursor-pointer"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================ */}
-      {/* ENROLL STUDENT MODAL - SAME AS PRINCIPAL */}
+      {/* ENROLL STUDENT MODAL - WITH AUTO-FILLED GRADE & FEE FROM FINANCE */}
       {/* ============================================================ */}
       {showModal && modalType === 'enrollStudent' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -1569,15 +1344,22 @@ export default function RegistrarModule({
               </p>
             </div>
 
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4">
-              <p className="text-sm text-emerald-700">
-                <CheckCircle className="h-4 w-4 inline mr-1" />
-                Fee paid: <strong>{modalData.feePaid || 0} Birr</strong>
-              </p>
-              <p className="text-xs text-emerald-600 mt-1">
-                <User className="h-3 w-3 inline mr-1" />
-                Student and Parent login accounts will be created automatically with passwords.
-              </p>
+            {/* Fee Summary from Finance */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                <p className="text-xs text-slate-500">Total Fee (from Finance)</p>
+                <p className="text-lg font-bold text-emerald-700">{modalData.feeAmount || 0} Birr</p>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                <p className="text-xs text-slate-500">Fee Paid (from Finance)</p>
+                <p className="text-lg font-bold text-blue-700">{modalData.feePaid || 0} Birr</p>
+              </div>
+              <div className="col-span-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                <p className="text-xs text-slate-500">Balance</p>
+                <p className={`text-lg font-bold ${(modalData.feeAmount || 0) - (modalData.feePaid || 0) > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                  {(modalData.feeAmount || 0) - (modalData.feePaid || 0)} Birr
+                </p>
+              </div>
             </div>
 
             <div className="space-y-4">
@@ -1616,28 +1398,49 @@ export default function RegistrarModule({
 
                 <div className="grid grid-cols-2 gap-3 mt-3">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Grade *</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Grade <span className="text-red-500">*</span>
+                      <span className="text-slate-400 font-normal ml-1">(Auto-filled from admission)</span>
+                    </label>
                     <select
                       value={modalData.grade || 'PreKG'}
-                      onChange={(e) => setModalData({ ...modalData, grade: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 outline-none text-sm"
+                      onChange={(e) => {
+                        const newGrade = e.target.value;
+                        const fee = getFeeForGrade(newGrade);
+                        setModalData({
+                          ...modalData,
+                          grade: newGrade,
+                          feeAmount: fee,
+                          feeBalance: fee - (modalData.feePaid || 0)
+                        });
+                      }}
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 outline-none text-sm bg-sky-50"
                     >
                       {GRADE_LEVELS.map((g) => (
                         <option key={g} value={g}>{g}</option>
                       ))}
                     </select>
+                    <p className="text-xs text-sky-600 mt-1">
+                      Grade from admission application
+                    </p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Section *</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Section <span className="text-red-500">*</span>
+                      <span className="text-slate-400 font-normal ml-1">(Select by Registrar)</span>
+                    </label>
                     <select
                       value={modalData.section || 'A'}
                       onChange={(e) => setModalData({ ...modalData, section: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 outline-none text-sm"
+                      className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 outline-none text-sm bg-amber-50"
                     >
                       {SECTIONS.map((s) => (
                         <option key={s} value={s}>{s}</option>
                       ))}
                     </select>
+                    <p className="text-xs text-amber-600 mt-1">
+                      Registrar determines section
+                    </p>
                   </div>
                 </div>
 
@@ -1764,6 +1567,9 @@ export default function RegistrarModule({
               </p>
               <p className="text-xs text-emerald-600 mt-1">
                 Student ID: <strong>{credentialsData.studentId || 'N/A'}</strong> | Admission: <strong>{credentialsData.admissionNo || 'N/A'}</strong>
+              </p>
+              <p className="text-xs text-emerald-600 mt-1">
+                Fee Paid: <strong>{credentialsData.feePaid || 0} Birr</strong> | Total: <strong>{credentialsData.feeTotal || 0} Birr</strong>
               </p>
             </div>
 
@@ -2017,6 +1823,127 @@ export default function RegistrarModule({
       )}
 
       {/* ============================================================ */}
+      {/* VIEW ADMISSION MODAL */}
+      {/* ============================================================ */}
+      {showModal && modalType === 'viewAdmission' && selectedAdmission && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">Application Details</h3>
+              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-slate-50 p-3 rounded-xl">
+                  <p className="text-xs text-slate-500">Candidate Name</p>
+                  <p className="font-bold">{selectedAdmission.candidateName}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl">
+                  <p className="text-xs text-slate-500">Grade Applied</p>
+                  <p className="font-bold">{selectedAdmission.gradeApplied}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl">
+                  <p className="text-xs text-slate-500">Parent Name</p>
+                  <p className="font-bold">{selectedAdmission.parentName}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl">
+                  <p className="text-xs text-slate-500">Email</p>
+                  <p className="font-bold text-sm">{selectedAdmission.email}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl">
+                  <p className="text-xs text-slate-500">Phone</p>
+                  <p className="font-bold">{selectedAdmission.phone || 'N/A'}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl">
+                  <p className="text-xs text-slate-500">Submitted Date</p>
+                  <p className="font-bold">{selectedAdmission.submittedDate}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl col-span-2">
+                  <p className="text-xs text-slate-500">Status</p>
+                  <span className={`px-2 py-0.5 rounded-full text-xs flex items-center gap-1 inline-flex mt-1 ${getStatusBadge(selectedAdmission.status)}`}>
+                    {getStatusIcon(selectedAdmission.status)}
+                    {selectedAdmission.status}
+                  </span>
+                </div>
+                {selectedAdmission.feePaid && (
+                  <div className="bg-emerald-50 p-3 rounded-xl col-span-2">
+                    <p className="text-xs text-slate-500">Fee Paid (from Finance)</p>
+                    <p className="font-bold text-emerald-600">{selectedAdmission.feePaid} Birr</p>
+                    <p className="text-xs text-slate-400">Paid on: {selectedAdmission.feePaidDate}</p>
+                  </div>
+                )}
+                {selectedAdmission.receiptFiles && selectedAdmission.receiptFiles.length > 0 && (
+                  <div className="bg-indigo-50 p-3 rounded-xl col-span-2">
+                    <p className="text-xs text-slate-500">Receipt Files</p>
+                    <p className="font-bold text-indigo-600">{selectedAdmission.receiptFiles.length} file(s)</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200">
+                {selectedAdmission.status === 'Pending' && (
+                  <button
+                    onClick={() => {
+                      handleProcessApplication(selectedAdmission.id, selectedAdmission.candidateName);
+                      setShowModal(false);
+                    }}
+                    className="flex-1 bg-blue-500 text-white py-2 rounded-xl font-semibold hover:bg-blue-600 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Send className="h-4 w-4" /> Send to Finance
+                  </button>
+                )}
+                {selectedAdmission.status === 'PaymentPending' && (
+                  <button
+                    onClick={() => {
+                      const amount = prompt('Enter fee amount paid (Birr):', '100');
+                      if (amount && !isNaN(Number(amount))) {
+                        handleFinanceApprove(selectedAdmission.id, Number(amount));
+                        setShowModal(false);
+                      }
+                    }}
+                    className="flex-1 bg-emerald-500 text-white py-2 rounded-xl font-semibold hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <DollarSign className="h-4 w-4" /> Record Payment
+                  </button>
+                )}
+                {selectedAdmission.status === 'Accepted' && (
+                  <button
+                    onClick={() => {
+                      handleEnrollStudent(selectedAdmission);
+                      setShowModal(false);
+                    }}
+                    className="flex-1 bg-purple-500 text-white py-2 rounded-xl font-semibold hover:bg-purple-600 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <UserCheck className="h-4 w-4" /> Enroll Student
+                  </button>
+                )}
+                {(selectedAdmission.status === 'Pending' || selectedAdmission.status === 'PaymentPending') && (
+                  <button
+                    onClick={() => {
+                      handleRejectApplication(selectedAdmission.id, selectedAdmission.candidateName);
+                      setShowModal(false);
+                    }}
+                    className="flex-1 bg-red-500 text-white py-2 rounded-xl font-semibold hover:bg-red-600 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <XCircle className="h-4 w-4" /> Reject Application
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowModal(false)}
+                  className="flex-1 bg-slate-200 text-slate-700 py-2 rounded-xl font-semibold hover:bg-slate-300 transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
       {/* STUDENT DETAILS MODAL */}
       {/* ============================================================ */}
       {showStudentDetailsModal && selectedStudent && (
@@ -2074,8 +2001,10 @@ export default function RegistrarModule({
                   <p className="font-bold text-sm">{selectedStudent.parentEmail}</p>
                 </div>
                 <div className="bg-slate-50 p-3 rounded-xl">
-                  <p className="text-xs text-slate-500">Documents</p>
-                  <p className="font-bold">{(selectedStudent.documents || []).length} files</p>
+                  <p className="text-xs text-slate-500">Fee Balance</p>
+                  <p className={`font-bold ${selectedStudent.tuitionBalance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {selectedStudent.tuitionBalance || 0} Birr
+                  </p>
                 </div>
               </div>
 
