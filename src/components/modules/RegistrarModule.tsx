@@ -1,4 +1,4 @@
-// RegistrarModule.tsx - Complete Version with Auto-Filled Grade & Fee from Finance
+// RegistrarModule.tsx - Complete Version with Fixed Credential Saving
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -141,20 +141,6 @@ export default function RegistrarModule({
     return fee ? fee.totalAmount : 0;
   };
 
-  // Filter students
-  const pendingAdmissions = admissions.filter((a: any) => a.status === 'Pending').length;
-  const acceptedAdmissions = admissions.filter((a: any) => a.status === 'Accepted').length;
-  const enrolledAdmissions = admissions.filter((a: any) => a.status === 'Enrolled').length;
-  const declinedAdmissions = admissions.filter((a: any) => a.status === 'Declined').length;
-  const paymentPendingAdmissions = admissions.filter((a: any) => a.status === 'PaymentPending').length;
-
-  // Students by status
-  const activeStudents = students.filter((s: any) => s.status === 'Active' || s.status === 'Enrolled');
-  const suspendedStudents = students.filter((s: any) => s.status === 'Suspended');
-  const graduatedStudents = students.filter((s: any) => s.status === 'Graduated');
-  const transferredStudents = students.filter((s: any) => s.status === 'Transferred');
-  const withdrawnStudents = students.filter((s: any) => s.status === 'Withdrawn');
-
   // ============================================================
   // GENERATE STUDENT ID
   // ============================================================
@@ -169,6 +155,20 @@ export default function RegistrarModule({
     const count = admissions.length + 1;
     return `ADM${year}${String(count).padStart(4, '0')}`;
   };
+
+  // Filter students
+  const pendingAdmissions = admissions.filter((a: any) => a.status === 'Pending').length;
+  const acceptedAdmissions = admissions.filter((a: any) => a.status === 'Accepted').length;
+  const enrolledAdmissions = admissions.filter((a: any) => a.status === 'Enrolled').length;
+  const declinedAdmissions = admissions.filter((a: any) => a.status === 'Declined').length;
+  const paymentPendingAdmissions = admissions.filter((a: any) => a.status === 'PaymentPending').length;
+
+  // Students by status
+  const activeStudents = students.filter((s: any) => s.status === 'Active' || s.status === 'Enrolled');
+  const suspendedStudents = students.filter((s: any) => s.status === 'Suspended');
+  const graduatedStudents = students.filter((s: any) => s.status === 'Graduated');
+  const transferredStudents = students.filter((s: any) => s.status === 'Transferred');
+  const withdrawnStudents = students.filter((s: any) => s.status === 'Withdrawn');
 
   // ============================================================
   // ENROLL STUDENT - WITH AUTO-FILLED GRADE & FEE FROM FINANCE
@@ -200,6 +200,9 @@ export default function RegistrarModule({
     setShowModal(true);
   };
 
+  // ============================================================
+  // FIXED: ENROLL STUDENT - WITH PROPER CREDENTIAL SAVING
+  // ============================================================
   const handleSaveEnrollment = () => {
     if (!modalData.name?.trim() || !modalData.email?.trim()) {
       showNotification('Student name and email are required!', 'error');
@@ -227,10 +230,10 @@ export default function RegistrarModule({
       grade: modalData.grade || 'PreKG',
       classSection: modalData.section || 'A',
       classId: modalData.classId || '',
-      email: modalData.email.trim(),
+      email: modalData.email.trim().toLowerCase(),
       phone: modalData.phone || '',
       parentName: modalData.parentName.trim(),
-      parentEmail: modalData.parentEmail.trim(),
+      parentEmail: modalData.parentEmail.trim().toLowerCase(),
       attendanceRate: 0,
       tuitionTotal: modalData.feeAmount || 0,
       tuitionPaid: modalData.feePaid || 0,
@@ -247,19 +250,24 @@ export default function RegistrarModule({
       updatedAt: new Date().toISOString()
     };
 
-    if (onAddStudent) {
-      onAddStudent(newStudent);
-    }
-
-    // Generate passwords
+    // ============================================================
+    // CRITICAL FIX: Generate passwords FIRST
+    // ============================================================
     const studentPassword = `STU${newStudent.id.slice(-6)}`;
     const parentPassword = `PAR${newStudent.id.slice(-6)}`;
+
+    console.log('🔑 Generated passwords:', {
+      student: { email: newStudent.email, password: studentPassword },
+      parent: { email: newStudent.parentEmail, password: parentPassword }
+    });
 
     const createdUsers = [];
     let updatedUsers = [...registeredUsers];
 
-    // Create STUDENT user account
-    if (newStudent.email && setRegisteredUsers) {
+    // ============================================================
+    // CRITICAL FIX: Create STUDENT user account with proper saving
+    // ============================================================
+    if (newStudent.email) {
       const studentExists = updatedUsers.some(
         (u: any) => u.email.toLowerCase() === newStudent.email.toLowerCase()
       );
@@ -269,7 +277,7 @@ export default function RegistrarModule({
           id: `USR-${Date.now().toString().slice(-6)}`,
           name: newStudent.name,
           email: newStudent.email.toLowerCase(),
-          password: studentPassword,
+          password: studentPassword,  // ✅ Password is set
           role: 'student' as const,
           schoolId: schoolId,
           schoolName: schoolName,
@@ -280,12 +288,19 @@ export default function RegistrarModule({
 
         updatedUsers = [...updatedUsers, studentUser];
         createdUsers.push({ type: 'Student', ...studentUser });
+        console.log('✅ Student user created:', studentUser.email, studentUser.password);
       } else {
-        updatedUsers = updatedUsers.map((u: any) =>
-          u.email.toLowerCase() === newStudent.email.toLowerCase()
-            ? { ...u, password: studentPassword, associatedId: newStudent.id }
-            : u
-        );
+        // Update existing user with correct password
+        updatedUsers = updatedUsers.map((u: any) => {
+          if (u.email.toLowerCase() === newStudent.email.toLowerCase()) {
+            return {
+              ...u,
+              password: studentPassword,  // ✅ Update password
+              associatedId: newStudent.id
+            };
+          }
+          return u;
+        });
         createdUsers.push({
           type: 'Student',
           name: newStudent.name,
@@ -293,11 +308,14 @@ export default function RegistrarModule({
           password: studentPassword,
           updated: true
         });
+        console.log('✅ Student user updated:', newStudent.email, studentPassword);
       }
     }
 
-    // Create PARENT user account
-    if (newStudent.parentEmail && setRegisteredUsers) {
+    // ============================================================
+    // CRITICAL FIX: Create PARENT user account with proper saving
+    // ============================================================
+    if (newStudent.parentEmail) {
       const parentExists = updatedUsers.some(
         (u: any) => u.email.toLowerCase() === newStudent.parentEmail.toLowerCase()
       );
@@ -307,7 +325,7 @@ export default function RegistrarModule({
           id: `USR-${Date.now().toString().slice(-6)}`,
           name: newStudent.parentName || `${newStudent.name}'s Parent`,
           email: newStudent.parentEmail.toLowerCase(),
-          password: parentPassword,
+          password: parentPassword,  // ✅ Password is set
           role: 'parent' as const,
           schoolId: schoolId,
           schoolName: schoolName,
@@ -318,12 +336,19 @@ export default function RegistrarModule({
 
         updatedUsers = [...updatedUsers, parentUser];
         createdUsers.push({ type: 'Parent', ...parentUser });
+        console.log('✅ Parent user created:', parentUser.email, parentUser.password);
       } else {
-        updatedUsers = updatedUsers.map((u: any) =>
-          u.email.toLowerCase() === newStudent.parentEmail.toLowerCase()
-            ? { ...u, password: parentPassword, associatedId: newStudent.id }
-            : u
-        );
+        // Update existing user with correct password
+        updatedUsers = updatedUsers.map((u: any) => {
+          if (u.email.toLowerCase() === newStudent.parentEmail.toLowerCase()) {
+            return {
+              ...u,
+              password: parentPassword,  // ✅ Update password
+              associatedId: newStudent.id
+            };
+          }
+          return u;
+        });
         createdUsers.push({
           type: 'Parent',
           name: newStudent.parentName,
@@ -331,17 +356,49 @@ export default function RegistrarModule({
           password: parentPassword,
           updated: true
         });
+        console.log('✅ Parent user updated:', newStudent.parentEmail, parentPassword);
       }
     }
 
+    // ============================================================
+    // CRITICAL FIX: Save to BOTH state AND localStorage
+    // ============================================================
+
+    // 1. Update state
     if (setRegisteredUsers) {
       setRegisteredUsers(updatedUsers);
     }
 
+    // 2. Save directly to localStorage (this is the most reliable method)
     try {
       localStorage.setItem('safari_registered_users', JSON.stringify(updatedUsers));
+      console.log('✅ Users saved to localStorage. Total users:', updatedUsers.length);
+
+      // Log all users for debugging
+      console.log('📋 All registered users:', updatedUsers.map((u: any) => ({
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        password: u.password
+      })));
     } catch (e) {
-      console.error('Error saving users to localStorage:', e);
+      console.error('❌ Error saving users to localStorage:', e);
+    }
+
+    // ============================================================
+    // Save the student to localStorage
+    // ============================================================
+    if (onAddStudent) {
+      onAddStudent(newStudent);
+    } else {
+      try {
+        const allStudents = JSON.parse(localStorage.getItem('safari_students') || '[]');
+        allStudents.push(newStudent);
+        localStorage.setItem('safari_students', JSON.stringify(allStudents));
+        console.log('✅ Student saved to localStorage:', newStudent.name);
+      } catch (e) {
+        console.error('❌ Error saving student:', e);
+      }
     }
 
     // Remove from pending students if exists
@@ -359,7 +416,21 @@ export default function RegistrarModule({
     });
     localStorage.setItem('safari_admissions', JSON.stringify(updatedAdmissions));
 
-    // Build success message
+    // ============================================================
+    // CRITICAL FIX: Verify credentials were saved
+    // ============================================================
+    const verifyUsers = JSON.parse(localStorage.getItem('safari_registered_users') || '[]');
+    console.log('🔍 Verifying saved users:');
+    createdUsers.forEach((u: any) => {
+      const found = verifyUsers.find((v: any) => v.email === u.email);
+      if (found) {
+        console.log(`✅ Verified: ${u.email} exists with password: ${found.password}`);
+      } else {
+        console.error(`❌ ERROR: ${u.email} NOT FOUND in localStorage!`);
+      }
+    });
+
+    // Build success message with credentials
     let successMsg = `✅ Student ${newStudent.name} enrolled successfully!\n`;
     successMsg += `📋 Student ID: ${newStudent.studentId}\n`;
     successMsg += `📋 Admission No: ${newStudent.admissionNo}\n`;
@@ -407,6 +478,7 @@ export default function RegistrarModule({
 
     showNotification(successMsg, 'success');
 
+    // Show credentials modal
     if (createdUsers.length > 0) {
       setShowCredentialsModal(true);
     }
@@ -634,7 +706,7 @@ export default function RegistrarModule({
       type: selectedDocumentType,
       name: file.name,
       size: file.size,
-      type: file.type,
+      fileType: file.type,
       uploadDate: new Date().toISOString(),
       uploadedBy: userName,
       status: 'Pending'
